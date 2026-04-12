@@ -1,0 +1,163 @@
+:root {
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  color: #14213d;
+  background: radial-gradient(circle at top right, #f3f7ff 0%, #eef2f9 40%, #e8edf7 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.app-shell {
+  width: min(1100px, 96vw);
+  margin: 18px auto;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr;
+}
+
+.panel {
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 8px 22px rgba(20, 33, 61, 0.08);
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1 {
+  margin-bottom: 4px;
+}
+
+.small-text {
+  color: #5f6b7d;
+  margin-bottom: 12px;
+  font-size: 0.92rem;
+}
+
+.form-panel label {
+  display: block;
+  margin: 10px 0 6px;
+  font-weight: 600;
+}
+
+.form-panel input {
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid #d5deea;
+  border-radius: 9px;
+  font-size: 1rem;
+}
+
+.btn-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.btn {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  color: #fff;
+  font-weight: 700;
+}
+
+.btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.btn-in {
+  background: #1f8f5f;
+}
+
+.btn-out {
+  background: #d43c3c;
+}
+
+.btn-print {
+  margin-top: 10px;
+  background: #1d4ed8;
+  width: 100%;
+}
+
+.status {
+  margin-top: 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.summary-grid {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.summary-grid article {
+  background: #f6f9ff;
+  border: 1px solid #dbe6ff;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.summary-grid article p {
+  margin-top: 6px;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  margin-top: 10px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  border-bottom: 1px solid #e6ecf5;
+  padding: 8px 7px;
+  font-size: 0.94rem;
+}
+
+.empty-cell {
+  text-align: center;
+  color: #6b7280;
+  padding: 16px;
+}
+
+.txt-in {
+  color: #157347;
+  font-weight: 700;
+}
+
+.txt-out {
+  color: #b42318;
+  font-weight: 700;
+}
+
+@media (max-width: 768px) {
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .btn-row {
+    flex-direction: column;
+  }
+}

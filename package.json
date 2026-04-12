@@ -1,0 +1,30 @@
+{
+  "name": "pos-electron-echo58d",
+  "version": "1.0.0",
+  "description": "POS desktop sederhana dengan Electron + React + printer thermal ESC/POS",
+  "main": "electron/main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
+    "dev:renderer": "vite",
+    "dev:electron": "wait-on tcp:5173 && cross-env ELECTRON_START_URL=http://localhost:5173 electron .",
+    "start": "electron .",
+    "build:renderer": "vite build",
+    "build": "npm run build:renderer"
+  },
+  "dependencies": {
+    "electron-printer": "^0.0.5",
+    "node-thermal-printer": "^4.5.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.2",
+    "concurrently": "^9.0.1",
+    "cross-env": "^7.0.3",
+    "electron": "^31.7.7",
+    "vite": "^5.4.10",
+    "wait-on": "^8.0.1"
+  }
+}
