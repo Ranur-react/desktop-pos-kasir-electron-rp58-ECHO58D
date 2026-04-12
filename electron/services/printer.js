@@ -96,12 +96,14 @@ async function printStoreHeader(printer) {
     if (typeof printer.setTypeFontB === "function") {
       printer.setTypeFontB();
     }
-    printer.println(STORE_ADDRESS);
+    const compactAddressLine = STORE_WA
+      ? `${STORE_ADDRESS} | WA: ${STORE_WA}`
+      : STORE_ADDRESS;
+    printer.println(compactAddressLine);
     if (typeof printer.setTypeFontA === "function") {
       printer.setTypeFontA();
     }
-  }
-  if (STORE_WA) {
+  } else if (STORE_WA) {
     printer.println(`WA: ${STORE_WA}`);
   }
 
