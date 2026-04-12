@@ -8,9 +8,17 @@ const {
 } = require("./services/storage");
 const {
   printReceipt,
+  printOrderReceipt,
   openCashDrawer,
   getPrinterConfig
 } = require("./services/printer");
+const {
+  getTodayOrders,
+  createOrder,
+  returOrderItem,
+  getOrderById,
+  getTodayOrdersSummary
+} = require("./services/orderStorage");
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -126,4 +134,65 @@ ipcMain.handle("pos:open-drawer", async () => {
     success: true,
     message: "Perintah buka laci kas berhasil dikirim."
   };
+});
+
+// ── Custom Order IPC ──
+
+ipcMain.handle("order:get-today", async () => {
+  return {
+    orders: getTodayOrders(app),
+    summary: getTodayOrdersSummary(app)
+  };
+});
+
+ipcMain.handle("order:create", async (_, payload) => {
+  const { items, paymentMethod, cashGiven } = payload || {};
+
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new Error("Keranjang kosong.");
+  }
+  if (!["cash", "qris"].includes(paymentMethod)) {
+    throw new Error("Metode pembayaran tidak valid.");
+  }
+
+  const subtotal = items.reduce((s, i) => s + Number(i.price) * Number(i.qty), 0);
+  if (paymentMethod === "cash") {
+    const cash = Number(cashGiven);
+    if (!Number.isFinite(cash) || cash < subtotal) {
+      throw new Error("Uang cash kurang dari total belanja.");
+    }
+  }
+
+  const order = createOrder(app, { items, paymentMethod, cashGiven });
+
+  let printResult = { success: false, message: "" };
+  try {
+    await printOrderReceipt(order);
+    printResult = { success: true, message: "Struk order tercetak." };
+  } catch (err) {
+    printResult = { success: false, message: err.message };
+  }
+
+  return {
+    order,
+    orders: getTodayOrders(app),
+    summary: getTodayOrdersSummary(app),
+    printResult
+  };
+});
+
+ipcMain.handle("order:retur", async (_, payload) => {
+  const { orderId, lineId, reason } = payload || {};
+  const order = returOrderItem(app, { orderId, lineId, reason });
+  return {
+    order,
+    orders: getTodayOrders(app),
+    summary: getTodayOrdersSummary(app)
+  };
+});
+
+ipcMain.handle("order:get-by-id", async (_, orderId) => {
+  const order = getOrderById(app, orderId);
+  if (!order) throw new Error("Order tidak ditemukan.");
+  return order;
 });

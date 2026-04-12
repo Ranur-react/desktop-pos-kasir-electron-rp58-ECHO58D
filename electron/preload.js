@@ -4,5 +4,11 @@ contextBridge.exposeInMainWorld("posApi", {
   getBootstrap: () => ipcRenderer.invoke("pos:get-bootstrap"),
   addTransaction: (payload) => ipcRenderer.invoke("pos:add-transaction", payload),
   printLastReceipt: () => ipcRenderer.invoke("pos:print-last"),
-  openDrawer: () => ipcRenderer.invoke("pos:open-drawer")
+  openDrawer: () => ipcRenderer.invoke("pos:open-drawer"),
+
+  // Custom Order
+  getOrders: () => ipcRenderer.invoke("order:get-today"),
+  createOrder: (payload) => ipcRenderer.invoke("order:create", payload),
+  returOrderItem: (payload) => ipcRenderer.invoke("order:retur", payload),
+  getOrderById: (orderId) => ipcRenderer.invoke("order:get-by-id", orderId)
 });

@@ -121,8 +121,62 @@ function getPrinterConfig() {
   };
 }
 
+async function printOrderReceipt(order) {
+  const printer = createPrinter();
+
+  const connected = await printer.isPrinterConnected();
+  if (!connected) {
+    throw new Error(
+      `Printer tidak terdeteksi di interface "${PRINTER_INTERFACE}". Cek nama printer/port.`
+    );
+  }
+
+  printer.alignCenter();
+  printer.bold(true);
+  printer.println(STORE_NAME);
+  printer.bold(false);
+  printer.println("Custom Order Receipt");
+  printer.drawLine();
+
+  printer.alignLeft();
+  printer.println(`Order  : ${order.id}`);
+  printer.println(`Waktu  : ${formatDate(order.createdAt)}`);
+  printer.println(`Bayar  : ${order.paymentMethod === "cash" ? "CASH" : "QRIS"}`);
+  printer.drawLine();
+
+  for (const item of order.items) {
+    if (item.returStatus === "returned") continue;
+    printer.println(`${item.title}`);
+    printer.println(`  ${item.qty} x ${formatRupiah(item.price)}  = ${formatRupiah(item.lineTotal)}`);
+  }
+
+  printer.drawLine();
+  printer.bold(true);
+  printer.println(`TOTAL  : ${formatRupiah(order.subtotal)}`);
+  printer.bold(false);
+
+  if (order.paymentMethod === "cash" && order.cashGiven !== null) {
+    printer.println(`Tunai  : ${formatRupiah(order.cashGiven)}`);
+    printer.println(`Kembali: ${formatRupiah(order.change)}`);
+  }
+
+  printer.drawLine();
+  printer.alignCenter();
+  printer.println("Terima kasih");
+  printer.newLine();
+
+  printer.raw(Buffer.from([0x1b, 0x70, 0x00, 0x19, 0xfa]));
+  printer.cut();
+
+  const ok = await printer.execute();
+  if (!ok) {
+    throw new Error("Gagal mengirim data ke printer thermal.");
+  }
+}
+
 module.exports = {
   printReceipt,
+  printOrderReceipt,
   openCashDrawer,
   getPrinterConfig
 };
