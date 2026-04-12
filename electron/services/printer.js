@@ -49,6 +49,7 @@ function getConfigValue(dotEnv, key, fallback = "") {
 
 const DOT_ENV = loadDotEnv();
 const PRINTER_INTERFACE = getConfigValue(DOT_ENV, "PRINTER_INTERFACE", "printer:RP58 Printer");
+const PRINTER_CHAR_WIDTH = Number(getConfigValue(DOT_ENV, "PRINTER_CHAR_WIDTH", "32")) || 32;
 const STORE_TITLE = getConfigValue(DOT_ENV, "STORE_TITLE", "Nama Toko");
 const STORE_SUBTITLE = getConfigValue(DOT_ENV, "STORE_SUBTITLE", "");
 const STORE_ADDRESS = getConfigValue(DOT_ENV, "STORE_ADDRESS", "");
@@ -142,6 +143,7 @@ function createPrinter() {
 
   return new ThermalPrinter({
     type: PrinterTypes.EPSON,
+    width: PRINTER_CHAR_WIDTH,
     interface: PRINTER_INTERFACE,
     driver,
     options: {
