@@ -56,15 +56,23 @@ h1 { margin-bottom: 4px; }
 
 .small-text { color: #5f6b7d; margin-bottom: 12px; font-size: .92rem; }
 
-/* ── Form panel ── */
-.form-panel label { display: block; margin: 10px 0 6px; font-weight: 600; }
+/* ── Form panel (inline row) ── */
+.form-panel label { display: block; margin: 0 0 4px; font-weight: 600; font-size: .88rem; }
 .form-panel input {
   width: 100%;
-  padding: 10px 11px;
+  padding: 9px 10px;
   border: 1px solid #d5deea;
   border-radius: 9px;
   font-size: 1rem;
 }
+.form-panel-inline { padding: 12px 16px; }
+.form-inline-row {
+  display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;
+}
+.form-field { flex: 1 1 180px; }
+.form-field-qty { flex: 0 0 130px; }
+.form-field-action { flex: 0 0 auto; }
+.form-field-action .btn-save { width: auto; margin-top: 0; padding: 9px 22px; }
 
 /* ── Buttons ── */
 .btn-row { display: flex; gap: 10px; margin-top: 14px; }
@@ -121,15 +129,54 @@ h1 { margin-bottom: 4px; }
 }
 .summary-grid article p { margin-top: 6px; font-size: 1.05rem; font-weight: 700; }
 
-/* ── Order 2-column layout ── */
-.order-columns {
-  display: grid;
-  grid-template-columns: 1fr 1.4fr;
-  gap: 14px;
+/* ── Order 2-column layout (REMOVED — now stacked) ── */
+
+/* ── Search input ── */
+.search-input {
+  padding: 7px 10px;
+  border: 1px solid #d5deea;
+  border-radius: 8px;
+  font-size: .9rem;
+  width: 220px;
+}
+.search-full { width: 100%; margin: 8px 0 4px; }
+
+/* ── Paging row ── */
+.paging {
+  display: flex; gap: 8px; align-items: center; justify-content: center;
+  margin-top: 8px; font-size: .88rem;
+}
+.paging button {
+  border: 0; background: #e2e8f0; border-radius: 6px; padding: 5px 12px;
+  cursor: pointer; font-weight: 600; font-size: .85rem;
+}
+.paging button:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ── Collapsible panel ── */
+.collapsible-panel { padding: 0; overflow: hidden; }
+.collapse-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; border: 0; background: #fff; padding: 14px 16px;
+  cursor: pointer; text-align: left; border-radius: 14px;
+}
+.collapse-toggle h2 { margin: 0; }
+.chevron { font-size: 1rem; color: #64748b; }
+.collapsible-panel .summary-grid,
+.collapsible-panel .table-wrap,
+.collapsible-panel .search-input,
+.collapsible-panel .paging { margin-left: 16px; margin-right: 16px; }
+.collapsible-panel .summary-grid { margin-bottom: 14px; }
+.collapsible-panel .paging { margin-bottom: 12px; }
+
+/* ── Section header (title + search side-by-side) ── */
+.section-header {
+  display: flex; justify-content: space-between; align-items: center;
+  flex-wrap: wrap; gap: 8px; margin-bottom: 4px;
 }
 
-/* ── Cart ── */
-.cart-panel { display: flex; flex-direction: column; }
+/* ── Cart (dominant, ~80vh) ── */
+.cart-panel-full { display: flex; flex-direction: column; }
+.cart-table-wrap { flex: 1; min-height: 60vh; max-height: 80vh; overflow-y: auto; }
 .cart-footer {
   margin-top: auto; padding-top: 12px;
   display: flex; align-items: center; gap: 12px;
@@ -202,6 +249,10 @@ th, td { text-align: left; border-bottom: 1px solid #e6ecf5; padding: 8px 7px; f
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .summary-grid, .summary-grid-5 { grid-template-columns: 1fr 1fr; }
-  .order-columns { grid-template-columns: 1fr; }
+  .form-inline-row { flex-direction: column; }
+  .form-field, .form-field-qty, .form-field-action { flex: 1 1 100%; }
+  .form-field-action .btn-save { width: 100%; }
+  .search-input { width: 100%; }
   .btn-row, .payment-methods { flex-direction: column; }
+  .cart-table-wrap { min-height: 40vh; max-height: 60vh; }
 }

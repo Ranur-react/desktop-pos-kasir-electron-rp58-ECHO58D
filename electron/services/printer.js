@@ -1,7 +1,113 @@
+const fs = require("fs");
+const path = require("path");
+const { app } = require("electron");
 const { printer: ThermalPrinter, types: PrinterTypes } = require("node-thermal-printer");
 
-const PRINTER_INTERFACE = process.env.PRINTER_INTERFACE || "printer:RP58 Printer";
-const STORE_NAME = process.env.STORE_NAME || "TOKO ANDA";
+function loadDotEnv() {
+  const appRoot = app.isPackaged
+    ? path.dirname(process.execPath)
+    : path.resolve(__dirname, "..", "..");
+  const envPath = path.join(appRoot, ".env");
+
+  const values = {};
+  if (!fs.existsSync(envPath)) {
+    return values;
+  }
+
+  const lines = fs.readFileSync(envPath, "utf-8").split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) {
+      continue;
+    }
+
+    const eqIdx = trimmed.indexOf("=");
+    const key = trimmed.slice(0, eqIdx).trim();
+    const value = trimmed
+      .slice(eqIdx + 1)
+      .trim()
+      .replace(/^["']|["']$/g, "");
+    values[key] = value;
+  }
+
+  return values;
+}
+
+function getConfigValue(dotEnv, key, fallback = "") {
+  const fromProcess = process.env[key];
+  if (typeof fromProcess === "string" && fromProcess.trim()) {
+    return fromProcess.trim();
+  }
+
+  const fromDotEnv = dotEnv[key];
+  if (typeof fromDotEnv === "string" && fromDotEnv.trim()) {
+    return fromDotEnv.trim();
+  }
+
+  return fallback;
+}
+
+const DOT_ENV = loadDotEnv();
+const PRINTER_INTERFACE = getConfigValue(DOT_ENV, "PRINTER_INTERFACE", "printer:RP58 Printer");
+const STORE_TITLE = getConfigValue(DOT_ENV, "STORE_TITLE", "Nama Toko");
+const STORE_SUBTITLE = getConfigValue(DOT_ENV, "STORE_SUBTITLE", "");
+const STORE_ADDRESS = getConfigValue(DOT_ENV, "STORE_ADDRESS", "");
+const STORE_WA = getConfigValue(DOT_ENV, "STORE_WA", "");
+const STORE_LOGO_PATH_RAW = getConfigValue(DOT_ENV, "STORE_LOGO_PATH", "");
+
+function resolveLogoPath(logoPathRaw) {
+  if (!logoPathRaw) {
+    return "";
+  }
+
+  if (path.isAbsolute(logoPathRaw)) {
+    return logoPathRaw;
+  }
+
+  const appRoot = app.isPackaged
+    ? path.dirname(process.execPath)
+    : path.resolve(__dirname, "..", "..");
+  return path.resolve(appRoot, logoPathRaw);
+}
+
+const STORE_LOGO_PATH = resolveLogoPath(STORE_LOGO_PATH_RAW);
+
+async function printStoreHeader(printer) {
+  printer.alignCenter();
+
+  if (STORE_LOGO_PATH && fs.existsSync(STORE_LOGO_PATH)) {
+    try {
+      await printer.printImage(STORE_LOGO_PATH);
+      printer.newLine();
+    } catch {
+      // Skip logo if image format/path is not supported by printer library.
+    }
+  }
+
+  printer.bold(true);
+  printer.println(STORE_TITLE);
+  printer.bold(false);
+
+  if (STORE_SUBTITLE) {
+    printer.println(STORE_SUBTITLE);
+  }
+  if (STORE_ADDRESS) {
+    // Use Font B for a smaller address line when supported by the printer.
+    if (typeof printer.setTypeFontB === "function") {
+      printer.setTypeFontB();
+    }
+    printer.println(STORE_ADDRESS);
+    if (typeof printer.setTypeFontA === "function") {
+      printer.setTypeFontA();
+    }
+  }
+  if (STORE_WA) {
+    printer.println(`WA: ${STORE_WA}`);
+  }
+
+  // Add breathing space before section titles like POS/Custom Order Receipt.
+  printer.newLine();
+}
 
 function resolvePrinterDriver() {
   if (!PRINTER_INTERFACE.startsWith("printer:")) {
@@ -70,10 +176,8 @@ async function printReceipt(tx) {
     );
   }
 
+  await printStoreHeader(printer);
   printer.alignCenter();
-  printer.bold(true);
-  printer.println(STORE_NAME);
-  printer.bold(false);
   printer.println("POS - Bukti Transaksi");
   printer.drawLine();
 
@@ -116,7 +220,11 @@ async function openCashDrawer() {
 function getPrinterConfig() {
   return {
     interface: PRINTER_INTERFACE,
-    storeName: STORE_NAME,
+    storeTitle: STORE_TITLE,
+    storeSubtitle: STORE_SUBTITLE,
+    storeAddress: STORE_ADDRESS,
+    storeWa: STORE_WA,
+    hasStoreLogo: Boolean(STORE_LOGO_PATH && fs.existsSync(STORE_LOGO_PATH)),
     type: "EPSON/ESC-POS"
   };
 }
@@ -131,10 +239,8 @@ async function printOrderReceipt(order) {
     );
   }
 
+  await printStoreHeader(printer);
   printer.alignCenter();
-  printer.bold(true);
-  printer.println(STORE_NAME);
-  printer.bold(false);
   printer.println("Custom Order Receipt");
   printer.drawLine();
 

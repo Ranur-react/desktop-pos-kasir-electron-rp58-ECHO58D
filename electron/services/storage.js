@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { resolveDataDir } = require("./dataPath");
 
 function getDateKey() {
   const now = new Date();
@@ -9,16 +10,8 @@ function getDateKey() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function getDataDir(app) {
-  const dir = path.join(app.getPath("userData"), "data");
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  return dir;
-}
-
 function getTodayFilePath(app) {
-  return path.join(getDataDir(app), `transactions-${getDateKey()}.json`);
+  return path.join(resolveDataDir(app), `transactions-${getDateKey()}.json`);
 }
 
 function readTransactions(app) {
