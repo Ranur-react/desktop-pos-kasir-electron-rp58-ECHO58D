@@ -108,14 +108,15 @@ export default function CustomOrder({ orders, summary, onRefresh }) {
     );
   }
 
-  async function handlePaymentDone(method, cashGiven) {
+  async function handlePaymentDone(method, cashGiven, qrisMeta = null) {
     try {
       setLoading(true);
       setStatus("Memproses pembayaran...");
       const result = await window.posApi.createOrder({
         items: cart.map(({ title, price, qty }) => ({ title, price, qty })),
         paymentMethod: method,
-        cashGiven: method === "cash" ? Number(cashGiven) : null
+        cashGiven: method === "cash" ? Number(cashGiven) : null,
+        qrisMeta: method === "qris" ? qrisMeta : null
       });
       setCart([]);
       setCartPage(0);

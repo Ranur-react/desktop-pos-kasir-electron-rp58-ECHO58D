@@ -239,6 +239,22 @@ th, td { text-align: left; border-bottom: 1px solid #e6ecf5; padding: 8px 7px; f
 }
 .change-display { margin-top: 10px; font-size: 1.05rem; }
 .qris-section { margin: 16px 0; }
+.qris-preview {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #d5deea;
+  border-radius: 10px;
+  background: #f8fafc;
+  text-align: center;
+}
+.qris-image {
+  width: min(260px, 100%);
+  height: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+}
 .modal-actions { display: flex; gap: 10px; margin-top: 18px; }
 .btn-close-modal {
   position: absolute; top: 12px; right: 14px;

@@ -284,9 +284,61 @@ async function printOrderReceipt(order) {
   }
 }
 
+async function printQrisSlip({ partnerReferenceNo, referenceNo, qrContent, amountValue, validityPeriod }) {
+  const printer = createPrinter();
+  const connected = await printer.isPrinterConnected();
+
+  if (!connected) {
+    throw new Error(
+      `Printer tidak terdeteksi di interface "${PRINTER_INTERFACE}". Cek nama printer/port.`
+    );
+  }
+
+  await printStoreHeader(printer);
+  printer.alignCenter();
+  printer.bold(true);
+  printer.println("QRIS PEMBAYARAN");
+  printer.bold(false);
+  printer.drawLine();
+
+  if (typeof printer.printQR === "function") {
+    await printer.printQR(qrContent, {
+      cellSize: 6,
+      correction: "M",
+      model: 2
+    });
+    printer.newLine();
+  } else {
+    printer.println("QR tidak didukung driver ini.");
+    printer.newLine();
+  }
+
+  printer.alignLeft();
+  printer.println(`Nominal : ${formatRupiah(amountValue)}`);
+  printer.println(`Ref     : ${partnerReferenceNo}`);
+  if (referenceNo && referenceNo !== partnerReferenceNo) {
+    printer.println(`Ref DOKU: ${referenceNo}`);
+  }
+  if (validityPeriod) {
+    printer.println(`Berlaku : ${formatDate(validityPeriod)}`);
+  }
+
+  printer.drawLine();
+  printer.alignCenter();
+  printer.println("Scan QRIS untuk bayar");
+  printer.newLine();
+  printer.cut();
+
+  const ok = await printer.execute();
+  if (!ok) {
+    throw new Error("Gagal mencetak slip QRIS.");
+  }
+}
+
 module.exports = {
   printReceipt,
   printOrderReceipt,
+  printQrisSlip,
   openCashDrawer,
   getPrinterConfig
 };

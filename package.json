@@ -16,6 +16,7 @@
   "dependencies": {
     "electron-printer": "^0.0.5",
     "node-thermal-printer": "^4.5.0",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

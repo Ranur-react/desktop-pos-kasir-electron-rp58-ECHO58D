@@ -9,6 +9,7 @@ const {
 const {
   printReceipt,
   printOrderReceipt,
+  printQrisSlip,
   openCashDrawer,
   getPrinterConfig
 } = require("./services/printer");
@@ -19,6 +20,11 @@ const {
   getOrderById,
   getTodayOrdersSummary
 } = require("./services/orderStorage");
+const {
+  generateQris,
+  queryQris,
+  makeExternalId
+} = require("./services/dokuQris");
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -146,7 +152,7 @@ ipcMain.handle("order:get-today", async () => {
 });
 
 ipcMain.handle("order:create", async (_, payload) => {
-  const { items, paymentMethod, cashGiven } = payload || {};
+  const { items, paymentMethod, cashGiven, qrisMeta } = payload || {};
 
   if (!Array.isArray(items) || items.length === 0) {
     throw new Error("Keranjang kosong.");
@@ -161,9 +167,27 @@ ipcMain.handle("order:create", async (_, payload) => {
     if (!Number.isFinite(cash) || cash < subtotal) {
       throw new Error("Uang cash kurang dari total belanja.");
     }
+  } else {
+    if (!qrisMeta?.paid) {
+      throw new Error("Pembayaran QRIS belum terkonfirmasi.");
+    }
   }
 
-  const order = createOrder(app, { items, paymentMethod, cashGiven });
+  const order = createOrder(app, {
+    items,
+    paymentMethod,
+    cashGiven,
+    qrisMeta: paymentMethod === "qris"
+      ? {
+          partnerReferenceNo: qrisMeta.partnerReferenceNo || "",
+          referenceNo: qrisMeta.referenceNo || "",
+          paidTime: qrisMeta.paidTime || "",
+          latestTransactionStatus: qrisMeta.latestTransactionStatus || "",
+          transactionStatusDesc: qrisMeta.transactionStatusDesc || "",
+          approvalCode: qrisMeta.approvalCode || ""
+        }
+      : null
+  });
 
   let printResult = { success: false, message: "" };
   try {
@@ -178,6 +202,66 @@ ipcMain.handle("order:create", async (_, payload) => {
     orders: getTodayOrders(app),
     summary: getTodayOrdersSummary(app),
     printResult
+  };
+});
+
+ipcMain.handle("qris:start", async (_, payload) => {
+  const { amount } = payload || {};
+  const amountNumber = Number(amount);
+  if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
+    throw new Error("Nominal QRIS tidak valid.");
+  }
+
+  const partnerReferenceNo = `INV-${makeExternalId()}`;
+  const generated = await generateQris({
+    partnerReferenceNo,
+    amountValue: amountNumber
+  });
+
+  let printResult = { success: false, message: "" };
+  try {
+    await printQrisSlip({
+      partnerReferenceNo: generated.partnerReferenceNo,
+      referenceNo: generated.referenceNo,
+      qrContent: generated.qrContent,
+      amountValue: amountNumber,
+      validityPeriod: generated.validityPeriod
+    });
+    printResult = { success: true, message: "Slip QRIS berhasil dicetak." };
+  } catch (err) {
+    printResult = { success: false, message: err.message };
+  }
+
+  return {
+    partnerReferenceNo: generated.partnerReferenceNo,
+    referenceNo: generated.referenceNo,
+    qrContent: generated.qrContent,
+    validityPeriod: generated.validityPeriod,
+    amount: amountNumber,
+    printResult
+  };
+});
+
+ipcMain.handle("qris:check", async (_, payload) => {
+  const { partnerReferenceNo, referenceNo } = payload || {};
+  if (!partnerReferenceNo || !referenceNo) {
+    throw new Error("Data referensi QRIS tidak lengkap.");
+  }
+
+  const status = await queryQris({
+    originalReferenceNo: referenceNo,
+    originalPartnerReferenceNo: partnerReferenceNo
+  });
+
+  const desc = String(status.transactionStatusDesc || "").toLowerCase();
+  const failed = !status.paid && (desc.includes("expired") || desc.includes("cancel") || desc.includes("failed"));
+
+  return {
+    ...status,
+    failed,
+    partnerReferenceNo,
+    referenceNo,
+    approvalCode: status.raw?.additionalInfo?.approvalCode || ""
   };
 });
 

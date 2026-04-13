@@ -10,5 +10,9 @@ contextBridge.exposeInMainWorld("posApi", {
   getOrders: () => ipcRenderer.invoke("order:get-today"),
   createOrder: (payload) => ipcRenderer.invoke("order:create", payload),
   returOrderItem: (payload) => ipcRenderer.invoke("order:retur", payload),
-  getOrderById: (orderId) => ipcRenderer.invoke("order:get-by-id", orderId)
+  getOrderById: (orderId) => ipcRenderer.invoke("order:get-by-id", orderId),
+
+  // DOKU QRIS
+  startQrisPayment: (payload) => ipcRenderer.invoke("qris:start", payload),
+  checkQrisPayment: (payload) => ipcRenderer.invoke("qris:check", payload)
 });

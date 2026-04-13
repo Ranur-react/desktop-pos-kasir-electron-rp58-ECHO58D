@@ -36,7 +36,7 @@ function getTodayOrders(app) {
   return readOrders(app).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-function createOrder(app, { items, paymentMethod, cashGiven }) {
+function createOrder(app, { items, paymentMethod, cashGiven, qrisMeta }) {
   const orders = readOrders(app);
   const now = new Date();
 
@@ -55,6 +55,7 @@ function createOrder(app, { items, paymentMethod, cashGiven }) {
     paymentMethod, // "cash" | "qris"
     cashGiven: paymentMethod === "cash" ? Number(cashGiven) : null,
     change: paymentMethod === "cash" ? Number(cashGiven) - subtotal : 0,
+    qrisMeta: paymentMethod === "qris" ? (qrisMeta || null) : null,
     status: "paid", // "paid" | "partial-return"
     returHistory: [],
     createdAt: now.toISOString(),
