@@ -12,7 +12,7 @@ contextBridge.exposeInMainWorld("posApi", {
   returOrderItem: (payload) => ipcRenderer.invoke("order:retur", payload),
   getOrderById: (orderId) => ipcRenderer.invoke("order:get-by-id", orderId),
 
-  // DOKU QRIS
-  startQrisPayment: (payload) => ipcRenderer.invoke("qris:start", payload),
-  checkQrisPayment: (payload) => ipcRenderer.invoke("qris:check", payload)
+  // QRIS Statis
+  getQrisImage: () => ipcRenderer.invoke("qris:image"),
+  printQrisStatic: (payload) => ipcRenderer.invoke("qris:print", payload)
 });

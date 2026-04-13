@@ -10,8 +10,10 @@ const {
   printReceipt,
   printOrderReceipt,
   printQrisSlip,
+  printQrisStatic,
   openCashDrawer,
-  getPrinterConfig
+  getPrinterConfig,
+  getQrisImageDataUrl
 } = require("./services/printer");
 const {
   getTodayOrders,
@@ -169,7 +171,7 @@ ipcMain.handle("order:create", async (_, payload) => {
     }
   } else {
     if (!qrisMeta?.paid) {
-      throw new Error("Pembayaran QRIS belum terkonfirmasi.");
+      throw new Error("Pembayaran QRIS belum dikonfirmasi.");
     }
   }
 
@@ -178,14 +180,7 @@ ipcMain.handle("order:create", async (_, payload) => {
     paymentMethod,
     cashGiven,
     qrisMeta: paymentMethod === "qris"
-      ? {
-          partnerReferenceNo: qrisMeta.partnerReferenceNo || "",
-          referenceNo: qrisMeta.referenceNo || "",
-          paidTime: qrisMeta.paidTime || "",
-          latestTransactionStatus: qrisMeta.latestTransactionStatus || "",
-          transactionStatusDesc: qrisMeta.transactionStatusDesc || "",
-          approvalCode: qrisMeta.approvalCode || ""
-        }
+      ? { paid: true }
       : null
   });
 
@@ -205,64 +200,18 @@ ipcMain.handle("order:create", async (_, payload) => {
   };
 });
 
-ipcMain.handle("qris:start", async (_, payload) => {
+ipcMain.handle("qris:image", async () => {
+  return getQrisImageDataUrl();
+});
+
+ipcMain.handle("qris:print", async (_, payload) => {
   const { amount } = payload || {};
   const amountNumber = Number(amount);
   if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
     throw new Error("Nominal QRIS tidak valid.");
   }
-
-  const partnerReferenceNo = `INV-${makeExternalId()}`;
-  const generated = await generateQris({
-    partnerReferenceNo,
-    amountValue: amountNumber
-  });
-
-  let printResult = { success: false, message: "" };
-  try {
-    await printQrisSlip({
-      partnerReferenceNo: generated.partnerReferenceNo,
-      referenceNo: generated.referenceNo,
-      qrContent: generated.qrContent,
-      amountValue: amountNumber,
-      validityPeriod: generated.validityPeriod
-    });
-    printResult = { success: true, message: "Slip QRIS berhasil dicetak." };
-  } catch (err) {
-    printResult = { success: false, message: err.message };
-  }
-
-  return {
-    partnerReferenceNo: generated.partnerReferenceNo,
-    referenceNo: generated.referenceNo,
-    qrContent: generated.qrContent,
-    validityPeriod: generated.validityPeriod,
-    amount: amountNumber,
-    printResult
-  };
-});
-
-ipcMain.handle("qris:check", async (_, payload) => {
-  const { partnerReferenceNo, referenceNo } = payload || {};
-  if (!partnerReferenceNo || !referenceNo) {
-    throw new Error("Data referensi QRIS tidak lengkap.");
-  }
-
-  const status = await queryQris({
-    originalReferenceNo: referenceNo,
-    originalPartnerReferenceNo: partnerReferenceNo
-  });
-
-  const desc = String(status.transactionStatusDesc || "").toLowerCase();
-  const failed = !status.paid && (desc.includes("expired") || desc.includes("cancel") || desc.includes("failed"));
-
-  return {
-    ...status,
-    failed,
-    partnerReferenceNo,
-    referenceNo,
-    approvalCode: status.raw?.additionalInfo?.approvalCode || ""
-  };
+  await printQrisStatic(amountNumber);
+  return { success: true, message: "QRIS tercetak." };
 });
 
 ipcMain.handle("order:retur", async (_, payload) => {

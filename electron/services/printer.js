@@ -1,7 +1,9 @@
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 const { app } = require("electron");
 const { printer: ThermalPrinter, types: PrinterTypes } = require("node-thermal-printer");
+const QRCode = require("qrcode");
 
 function loadDotEnv() {
   const appRoot = app.isPackaged
@@ -55,6 +57,7 @@ const STORE_SUBTITLE = getConfigValue(DOT_ENV, "STORE_SUBTITLE", "");
 const STORE_ADDRESS = getConfigValue(DOT_ENV, "STORE_ADDRESS", "");
 const STORE_WA = getConfigValue(DOT_ENV, "STORE_WA", "");
 const STORE_LOGO_PATH_RAW = getConfigValue(DOT_ENV, "STORE_LOGO_PATH", "");
+const QRIS_STATIC_CONTENT = getConfigValue(DOT_ENV, "QRIS_STATIC_CONTENT", "");
 
 function resolveLogoPath(logoPathRaw) {
   if (!logoPathRaw) {
@@ -72,6 +75,7 @@ function resolveLogoPath(logoPathRaw) {
 }
 
 const STORE_LOGO_PATH = resolveLogoPath(STORE_LOGO_PATH_RAW);
+
 
 async function printStoreHeader(printer) {
   printer.alignCenter();
@@ -284,61 +288,76 @@ async function printOrderReceipt(order) {
   }
 }
 
-async function printQrisSlip({ partnerReferenceNo, referenceNo, qrContent, amountValue, validityPeriod }) {
-  const printer = createPrinter();
-  const connected = await printer.isPrinterConnected();
+async function getQrisImageDataUrl() {
+  if (!QRIS_STATIC_CONTENT) {
+    return { imageDataUrl: "", qrisContent: "" };
+  }
+  const dataUrl = await QRCode.toDataURL(QRIS_STATIC_CONTENT, {
+    errorCorrectionLevel: "M",
+    width: 256,
+    margin: 2
+  });
+  return { imageDataUrl: dataUrl, qrisContent: QRIS_STATIC_CONTENT };
+}
 
-  if (!connected) {
-    throw new Error(
-      `Printer tidak terdeteksi di interface "${PRINTER_INTERFACE}". Cek nama printer/port.`
-    );
+async function printQrisStatic(amountValue) {
+  if (!QRIS_STATIC_CONTENT) {
+    throw new Error("QRIS_STATIC_CONTENT belum diisi di .env");
   }
 
-  await printStoreHeader(printer);
-  printer.alignCenter();
-  printer.bold(true);
-  printer.println("QRIS PEMBAYARAN");
-  printer.bold(false);
-  printer.drawLine();
+  // Generate QR code as temporary PNG file
+  const tmpFile = path.join(os.tmpdir(), `qris-static-${Date.now()}.png`);
+  await QRCode.toFile(tmpFile, QRIS_STATIC_CONTENT, {
+    errorCorrectionLevel: "M",
+    width: 200,
+    margin: 2
+  });
 
-  if (typeof printer.printQR === "function") {
-    await printer.printQR(qrContent, {
-      cellSize: 6,
-      correction: "M",
-      model: 2
-    });
+  try {
+    const printer = createPrinter();
+    const connected = await printer.isPrinterConnected();
+    if (!connected) {
+      throw new Error(`Printer tidak terdeteksi di interface "${PRINTER_INTERFACE}". Cek nama printer/port.`);
+    }
+
+    await printStoreHeader(printer);
+    printer.alignCenter();
+    printer.bold(true);
+    printer.println("QRIS PEMBAYARAN");
+    printer.bold(false);
+    printer.drawLine();
+
+    try {
+      await printer.printImage(tmpFile);
+      printer.newLine();
+    } catch {
+      printer.println("(Gagal cetak gambar QR)");
+      printer.newLine();
+    }
+
+    printer.alignCenter();
+    printer.bold(true);
+    printer.println(`Total: ${formatRupiah(amountValue)}`);
+    printer.bold(false);
+    printer.drawLine();
+    printer.println("Scan QRIS untuk bayar");
     printer.newLine();
-  } else {
-    printer.println("QR tidak didukung driver ini.");
-    printer.newLine();
-  }
+    printer.cut();
 
-  printer.alignLeft();
-  printer.println(`Nominal : ${formatRupiah(amountValue)}`);
-  printer.println(`Ref     : ${partnerReferenceNo}`);
-  if (referenceNo && referenceNo !== partnerReferenceNo) {
-    printer.println(`Ref DOKU: ${referenceNo}`);
-  }
-  if (validityPeriod) {
-    printer.println(`Berlaku : ${formatDate(validityPeriod)}`);
-  }
-
-  printer.drawLine();
-  printer.alignCenter();
-  printer.println("Scan QRIS untuk bayar");
-  printer.newLine();
-  printer.cut();
-
-  const ok = await printer.execute();
-  if (!ok) {
-    throw new Error("Gagal mencetak slip QRIS.");
+    const ok = await printer.execute();
+    if (!ok) {
+      throw new Error("Gagal mencetak slip QRIS.");
+    }
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch {}
   }
 }
 
 module.exports = {
   printReceipt,
   printOrderReceipt,
-  printQrisSlip,
+  printQrisStatic,
   openCashDrawer,
-  getPrinterConfig
+  getPrinterConfig,
+  getQrisImageDataUrl
 };

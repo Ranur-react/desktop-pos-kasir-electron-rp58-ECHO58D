@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import QRCode from "qrcode";
 
 function formatRupiah(value) {
   return new Intl.NumberFormat("id-ID", {
@@ -12,116 +11,66 @@ function formatRupiah(value) {
 export default function PaymentModal({ total, loading, onPay, onClose }) {
   const [method, setMethod] = useState(null); // null | "cash" | "qris"
   const [cashGiven, setCashGiven] = useState("");
-  const [qrisSession, setQrisSession] = useState(null);
   const [qrisImage, setQrisImage] = useState("");
   const [qrisStatus, setQrisStatus] = useState("");
   const [qrisError, setQrisError] = useState("");
   const [qrisBusy, setQrisBusy] = useState(false);
+  const [qrisReady, setQrisReady] = useState(false);
 
   const cashNum = Number(cashGiven);
   const change = Number.isFinite(cashNum) ? cashNum - total : 0;
   const canProcessCash = method === "cash" && Number.isFinite(cashNum) && cashNum >= total;
-  const isWaitingQris = method === "qris" && Boolean(qrisSession);
   const localLoading = loading || qrisBusy;
 
+  // Load static QRIS image when QRIS method selected
   useEffect(() => {
+    if (method !== "qris") return;
     let active = true;
-
-    async function buildQrisImage() {
-      if (!qrisSession?.qrContent) {
-        setQrisImage("");
-        return;
-      }
-
+    (async () => {
       try {
-        const url = await QRCode.toDataURL(qrisSession.qrContent, {
-          margin: 1,
-          width: 260
-        });
+        const result = await window.posApi.getQrisImage();
         if (active) {
-          setQrisImage(url);
+          setQrisImage(result.imageDataUrl || "");
+          setQrisReady(Boolean(result.imageDataUrl));
+          if (!result.imageDataUrl) {
+            setQrisError("QRIS_STATIC_CONTENT belum diisi di .env");
+          }
         }
-      } catch {
-        if (active) {
-          setQrisImage("");
-        }
-      }
-    }
-
-    buildQrisImage();
-    return () => {
-      active = false;
-    };
-  }, [qrisSession]);
-
-  useEffect(() => {
-    if (!isWaitingQris || !qrisSession) {
-      return undefined;
-    }
-
-    const timer = setInterval(async () => {
-      try {
-        const check = await window.posApi.checkQrisPayment({
-          partnerReferenceNo: qrisSession.partnerReferenceNo,
-          referenceNo: qrisSession.referenceNo
-        });
-
-        if (check.paid) {
-          clearInterval(timer);
-          setQrisBusy(true);
-          setQrisStatus("Pembayaran terdeteksi. Menyimpan order...");
-          await onPay("qris", null, {
-            paid: true,
-            partnerReferenceNo: qrisSession.partnerReferenceNo,
-            referenceNo: qrisSession.referenceNo,
-            paidTime: check.paidTime,
-            latestTransactionStatus: check.latestTransactionStatus,
-            transactionStatusDesc: check.transactionStatusDesc,
-            approvalCode: check.approvalCode
-          });
-          return;
-        }
-
-        if (check.failed) {
-          clearInterval(timer);
-          setQrisError(`Pembayaran QRIS gagal/expired (${check.transactionStatusDesc || check.latestTransactionStatus}).`);
-          setQrisStatus("");
-          return;
-        }
-
-        setQrisStatus(`Menunggu pembayaran... ${check.transactionStatusDesc || "Pending"}`);
       } catch (err) {
-        setQrisError(`Cek status QRIS gagal: ${err.message}`);
+        if (active) setQrisError(`Gagal memuat QRIS: ${err.message}`);
       }
-    }, 4000);
-
-    return () => clearInterval(timer);
-  }, [isWaitingQris, onPay, qrisSession]);
+    })();
+    return () => { active = false; };
+  }, [method]);
 
   function resetQrisState() {
-    setQrisSession(null);
     setQrisImage("");
     setQrisStatus("");
     setQrisError("");
     setQrisBusy(false);
+    setQrisReady(false);
   }
 
-  async function startQrisPayment() {
+  async function handlePrintQris() {
     try {
       setQrisBusy(true);
-      setQrisError("");
-      setQrisStatus("Membuat QRIS dinamis...");
-
-      const session = await window.posApi.startQrisPayment({ amount: total });
-      setQrisSession(session);
-      setQrisStatus("QRIS siap. Menunggu pembayaran...");
-
-      if (session.printResult?.message) {
-        setQrisStatus((prev) => `${prev} ${session.printResult.message}`);
-      }
+      setQrisStatus("Mencetak QRIS...");
+      const result = await window.posApi.printQrisStatic({ amount: total });
+      setQrisStatus(result.message || "QRIS tercetak.");
     } catch (err) {
-      setQrisError(`Gagal membuat QRIS: ${err.message}`);
-      setQrisStatus("");
+      setQrisStatus(`Gagal cetak: ${err.message}`);
+    } finally {
+      setQrisBusy(false);
+    }
+  }
+
+  async function confirmQrisPayment() {
+    try {
+      setQrisBusy(true);
+      setQrisStatus("Menyimpan order...");
+      await onPay("qris", null, { paid: true });
+    } catch (err) {
+      setQrisError(`Gagal: ${err.message}`);
     } finally {
       setQrisBusy(false);
     }
@@ -161,21 +110,13 @@ export default function PaymentModal({ total, loading, onPay, onClose }) {
           </div>
         )}
 
-        {/* Step 2b: QRIS — info */}
+        {/* Step 2b: QRIS statis */}
         {method === "qris" && (
           <div className="qris-section">
-            {!qrisSession && <p>Klik <strong>Proses Pembayaran</strong> untuk generate QRIS dinamis dari DOKU.</p>}
-            {qrisSession && (
+            {qrisImage && (
               <div className="qris-preview">
-                {qrisImage ? (
-                  <img src={qrisImage} alt="QRIS Dinamis" className="qris-image" />
-                ) : (
-                  <p className="small-text">Memproses tampilan QR...</p>
-                )}
-                <p className="small-text">Ref: {qrisSession.partnerReferenceNo}</p>
-                {qrisSession.validityPeriod && (
-                  <p className="small-text">Berlaku sampai: {new Date(qrisSession.validityPeriod).toLocaleString("id-ID")}</p>
-                )}
+                <img src={qrisImage} alt="QRIS Statis" className="qris-image" />
+                <p className="small-text">Scan QRIS di atas untuk bayar <strong>{formatRupiah(total)}</strong></p>
               </div>
             )}
             {qrisStatus && <p className="small-text">{qrisStatus}</p>}
@@ -195,11 +136,17 @@ export default function PaymentModal({ total, loading, onPay, onClose }) {
                 Proses Pembayaran
               </button>
             )}
-            {method === "qris" && !qrisSession && (
-              <button className="btn btn-bayar" disabled={localLoading}
-                onClick={startQrisPayment}>
-                Proses Pembayaran
-              </button>
+            {method === "qris" && qrisReady && (
+              <>
+                <button className="btn btn-secondary" disabled={localLoading}
+                  onClick={handlePrintQris}>
+                  Cetak QRIS
+                </button>
+                <button className="btn btn-bayar" disabled={localLoading}
+                  onClick={confirmQrisPayment}>
+                  Konfirmasi Pembayaran
+                </button>
+              </>
             )}
           </div>
         )}
