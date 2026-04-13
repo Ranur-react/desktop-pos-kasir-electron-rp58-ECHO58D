@@ -309,8 +309,8 @@ async function printQrisStatic(amountValue) {
   const tmpFile = path.join(os.tmpdir(), `qris-static-${Date.now()}.png`);
   await QRCode.toFile(tmpFile, QRIS_STATIC_CONTENT, {
     errorCorrectionLevel: "M",
-    width: 200,
-    margin: 2
+    width: 380,
+    margin: 1
   });
 
   try {
