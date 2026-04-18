@@ -1,0 +1,291 @@
+{% assign payment_status = order.financial_status %}
+
+{% comment %} Tentukan alamat penerima: pakai shipping, fallback ke billing {% endcomment %}
+{% if order.shipping_address and order.shipping_address.address1 != blank %}
+{% assign recipient = order.shipping_address %}
+{% else %}
+{% assign recipient = order.billing_address %}
+{% endif %}
+
+{% assign is_pickup = false %}
+{% if order.shipping_address != blank %}
+{% assign is_pickup = false %}
+{% else %}
+{% assign is_pickup = true %}
+{% endif %}
+
+<!-- ===== HEADER ===== -->
+<div class="header">
+    <img src="https://cdn.shopify.com/s/files/1/0991/9522/4381/files/bmlogo_1.png?v=1775146003" alt="Logo Barang Mudo">
+    <h1>
+        <!-- BARANG MUDO -->
+        {{ shop.name }}
+    </h1>
+
+    <!-- Alamat toko di bawah nama toko -->
+    <div class="shop-address">{% if shop.address.address2 != blank %} {{ shop.address.address2 }}{% endif %}<br>
+        {{ shop.address.city }}{% if shop.address.province != blank %}, {{ shop.address.province }}{% endif %}, {{
+        shop.address.country }}
+    </div>
+
+    <!-- STATUS PEMBAYARAN — tanpa background -->
+    {% if payment_status == 'pending' or payment_status == 'partially_paid' %}
+    {% if is_pickup %}
+    <span class="badge">💵 COD — Bayar cash di toko</span>
+    {% else %}
+    <span class="badge">💵 COD — Bayar ke Kurir</span>
+    {% endif %}
+    {% else %}
+    <span class="badge">✅ LUNAS — Tidak Perlu Bayar ke Kurir</span>
+    {% endif %}
+</div>
+
+<!-- ===== INFO PENERIMA ===== -->
+
+
+
+<div class="info-box">
+    {% if is_pickup %}
+    <h3>🏪 Ambil di Toko (Pick Up)</h3>
+    <p><strong>{{ recipient.name }}</strong></p>
+    {% if recipient.phone != blank %}
+    <p>📱 WA/Telp: {{ recipient.phone }}</p>
+    {% elsif order.customer.phone != blank %}
+    <p>📱 WA/Telp: {{ order.customer.phone }}</p>
+    {% endif %}
+    <p
+        style="margin-top:10px; padding:8px 12px; border:1.5px dashed #e67e22; border-radius:6px; color:#e67e22; font-weight:bold; font-size:12px;">
+        ⚠️ Pesanan ini TIDAK dikirim — pelanggan akan mengambil langsung di toko.
+    </p>
+    {% else %}
+    <h3>📦 Kirim Kepada</h3>
+    <p><strong>{{ recipient.name }}</strong></p>
+    <p>
+        {% if recipient.address1 != blank %}{{ recipient.address1 }}, {% endif %}{% if recipient.address2 != blank %}{{
+        recipient.address2 }}, {% endif %}{{ recipient.city }}{% if recipient.country != blank %}, {{ recipient.country
+        }}{% endif %}
+    </p>
+    {% if recipient.phone != blank %}
+    <p>📱 WA/Telp: {{ recipient.phone }}</p>
+    {% elsif order.customer.phone != blank %}
+    <p>📱 WA/Telp: {{ order.customer.phone }}</p>
+    {% endif %}
+    {% endif %}
+</div>
+
+<!-- ===== ORDER DETAILS ===== -->
+<div class="section-title">Order Details — {{ order.name }}</div>
+<p style="font-size:12px; color:#777; margin-bottom:10px;">
+    Tanggal: {{ order.created_at | date: "%d %B %Y, %H:%M" }} WIB
+</p>
+
+<table>
+    <thead>
+        <tr>
+            <th>Produk</th>
+            <th>SKU</th>
+            <th class="text-right">Qty</th>
+            <th class="text-right">Harga</th>
+            <th class="text-right">Subtotal</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for line_item in order.line_items %}
+        <tr>
+            <td>
+                {{ line_item.title }}
+                {% if line_item.variant_title != blank and line_item.variant_title != 'Default Title' %}
+                <br><span style="font-size:11px; color:#888;">{{ line_item.variant_title }}</span>
+                {% endif %}
+            </td>
+            <td style="color:#888; font-size:11px;">{{ line_item.sku | default: '-' }}</td>
+            <td class="text-right">{{ line_item.quantity }}</td>
+            <td class="text-right">{{ line_item.price | money }}</td>
+            <td class="text-right">{{ line_item.quantity | times: line_item.price | money }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- ===== TOTALS ===== -->
+<div class="totals">
+    <table>
+        <tr>
+            <td>Subtotal</td>
+            <td class="text-right">{{ order.subtotal_price | money }}</td>
+        </tr>
+        {% if order.total_discounts > 0 %}
+        <tr>
+            <td>Diskon</td>
+            <td class="text-right" style="color: #c0392b;">- {{ order.total_discounts | money }}</td>
+        </tr>
+        {% endif %}
+        {% if is_pickup %}
+        <tr>
+            <td>Ongkir</td>
+            <td class="text-right">-</td>
+        </tr>
+        {% else %}
+        {% for shipping_line in order.shipping_lines %}
+        <tr>
+            <td>Ongkir</td>
+            <td class="text-right">{{ shipping_line.price | money }}</td>
+        </tr>
+        {% endfor %}
+        {% endif %}
+        <tr class="grand-total">
+            <td>TOTAL</td>
+            <td class="text-right">{{ order.total_price | money }}</td>
+        </tr>
+    </table>
+</div>
+
+<!-- ===== FOOTER ===== -->
+<div class="footer">
+    Terima kasih telah berbelanja di Barang Mudo! 🛍️<br>
+    Dicetak pada: {{ "now" | date: "%d %B %Y, %H:%M" }}
+</div>
+
+<style>
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+    }
+
+    body {
+        font-family: Arial, sans-serif;
+        font-size: 13px;
+        color: #222;
+        padding: 20px;
+    }
+
+    /* HEADER */
+    .header {
+        text-align: center;
+        border-bottom: 2px solid #222;
+        padding-bottom: 14px;
+        margin-bottom: 16px;
+    }
+
+    .header img {
+        height: 70px;
+        margin-bottom: 6px;
+    }
+
+    .header h1 {
+        font-size: 22px;
+        font-weight: bold;
+        letter-spacing: 1px;
+    }
+
+    .header .shop-address {
+        font-size: 12px;
+        color: #444;
+        margin: 4px 0 8px 0;
+        line-height: 1.5;
+    }
+
+    /* PAYMENT BADGE — tanpa background untuk printer termal */
+    .badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 13px;
+        margin-top: 6px;
+        border: 1.5px solid #222;
+    }
+
+    /* INFO PENERIMA */
+    .info-box {
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        padding: 12px;
+        margin-bottom: 16px;
+    }
+
+    .info-box h3 {
+        font-size: 11px;
+        text-transform: uppercase;
+        color: #888;
+        margin-bottom: 8px;
+        letter-spacing: 0.5px;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 4px;
+    }
+
+    .info-box p {
+        margin-bottom: 3px;
+        line-height: 1.5;
+    }
+
+    /* ORDER DETAILS */
+    .section-title {
+        font-size: 13px;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #555;
+        margin-bottom: 8px;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 16px;
+    }
+
+    thead th {
+        background: #f5f5f5;
+        padding: 8px 10px;
+        text-align: left;
+        font-size: 12px;
+        border-bottom: 2px solid #ddd;
+    }
+
+    tbody td {
+        padding: 8px 10px;
+        border-bottom: 1px solid #eee;
+        vertical-align: top;
+    }
+
+    tbody tr:last-child td {
+        border-bottom: none;
+    }
+
+    .text-right {
+        text-align: right;
+    }
+
+    /* TOTALS */
+    .totals {
+        width: 260px;
+        margin-left: auto;
+    }
+
+    .totals table {
+        margin-bottom: 0;
+    }
+
+    .totals td {
+        padding: 5px 10px;
+        font-size: 13px;
+    }
+
+    .totals .grand-total td {
+        font-weight: bold;
+        font-size: 15px;
+        border-top: 2px solid #222;
+    }
+
+    /* FOOTER */
+    .footer {
+        text-align: center;
+        margin-top: 20px;
+        font-size: 11px;
+        color: #999;
+        border-top: 1px solid #eee;
+        padding-top: 10px;
+    }
+</style>
