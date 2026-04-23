@@ -32,16 +32,16 @@ Fokus utama project ini adalah template teknis yang mudah dikembangkan lebih lan
 
 ```text
 electron/
-	main.js
-	preload.js
-	services/
-		printer.js
-		storage.js
-		windows-printer-driver.js
+  main.js
+  preload.js
+  services/
+    printer.js
+    storage.js
+    windows-printer-driver.js
 src/
-	App.jsx
-	App.css
-	main.jsx
+  App.jsx
+  App.css
+  main.jsx
 ```
 
 ## Prasyarat di Laptop Lain
@@ -184,6 +184,39 @@ npm.cmd run pack:msi
 Output di folder `release/`:
 
 - `Barangmudo POS Setup x.y.z.msi`
+
+### Jika build MSI gagal karena `Cannot create symbolic link`
+
+Penyebab:
+
+- `electron-builder` mengekstrak helper binary `winCodeSign`
+- archive tersebut berisi symbolic link
+- Windows memblokir pembuatan symlink untuk user biasa jika **Developer Mode** belum aktif atau terminal tidak dijalankan sebagai Administrator
+
+Solusi yang disarankan:
+
+1. Aktifkan **Developer Mode** di Windows:
+   - `Settings` → `Privacy & security` → `For developers` → aktifkan `Developer Mode`
+1. Hapus cache lama:
+
+```powershell
+Remove-Item "$env:LOCALAPPDATA\electron-builder\Cache\winCodeSign" -Recurse -Force -ErrorAction SilentlyContinue
+```
+
+1. Buka ulang terminal, lalu jalankan lagi:
+
+```powershell
+npm.cmd run pack:msi
+```
+
+Alternatif cepat:
+
+- Jalankan PowerShell sebagai **Administrator** lalu ulangi build
+- Jika user tidak butuh MSI, gunakan installer `.exe`:
+
+```powershell
+npm.cmd run pack:win
+```
 
 ### 4) File yang dibagikan ke user
 

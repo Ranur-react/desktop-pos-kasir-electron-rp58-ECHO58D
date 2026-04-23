@@ -4,4 +4,6 @@ dist
 *.log
 .env
 *.pem
+*.zip
 pos-data/
+release/

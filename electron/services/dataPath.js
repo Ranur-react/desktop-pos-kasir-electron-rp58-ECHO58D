@@ -6,16 +6,21 @@ let _dataDir = null;
 /**
  * Resolve the data directory from .env DATA_PATH, or fall back to ./pos-data
  * next to the app root (easy to find & sync to OneDrive).
+ * If app is in Program Files (read-only), use AppData instead.
  */
 function resolveDataDir(app) {
   if (_dataDir) return _dataDir;
 
-  // 1. Try reading .env from app root
+  // 1. Determine app root and .env location (same logic as printer.js)
   const appRoot = app.isPackaged
     ? path.dirname(app.getPath("exe"))
     : path.resolve(__dirname, "..", "..");
+  
+  const isInProgramFiles = appRoot.toLowerCase().includes("program files");
+  const envPath = isInProgramFiles
+    ? path.join(app.getPath("userData"), ".env")
+    : path.join(appRoot, ".env");
 
-  const envPath = path.join(appRoot, ".env");
   let envDataPath = "";
 
   if (fs.existsSync(envPath)) {
@@ -39,8 +44,11 @@ function resolveDataDir(app) {
     _dataDir = path.isAbsolute(envDataPath)
       ? envDataPath
       : path.resolve(appRoot, envDataPath);
+  } else if (isInProgramFiles) {
+    // If in Program Files, default to AppData
+    _dataDir = path.join(app.getPath("userData"), "pos-data");
   } else {
-    // Default: ./pos-data next to the application
+    // Dev mode: ./pos-data next to the application
     _dataDir = path.join(appRoot, "pos-data");
   }
 

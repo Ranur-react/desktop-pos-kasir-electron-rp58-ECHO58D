@@ -13,7 +13,15 @@ function getAppRoot() {
 }
 
 function getEnvPath() {
-  return path.join(getAppRoot(), ".env");
+  const appRoot = getAppRoot();
+  
+  // Jika di Program Files (read-only), gunakan AppData
+  if (appRoot.toLowerCase().includes("program files")) {
+    return path.join(app.getPath("userData"), ".env");
+  }
+  
+  // Dev mode atau folder lokal: tetap di app root
+  return path.join(appRoot, ".env");
 }
 
 function loadDotEnv() {
