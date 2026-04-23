@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import CustomOrder from "./CustomOrder";
+import PrinterSettings from "./PrinterSettings";
 
 function formatRupiah(value) {
   return new Intl.NumberFormat("id-ID", {
@@ -17,7 +18,7 @@ function formatDate(value) {
 }
 
 export default function App() {
-  const [tab, setTab] = useState("order"); // "kasir" | "order"
+  const [tab, setTab] = useState("order"); // "kasir" | "order" | "printer"
 
   // -- Kasir state --
   const [nominal, setNominal] = useState("");
@@ -100,6 +101,9 @@ export default function App() {
         <button className={`tab-btn ${tab === "kasir" ? "tab-active" : ""}`} onClick={() => setTab("kasir")}>
           Kasir Cash
         </button>
+        <button className={`tab-btn ${tab === "printer" ? "tab-active" : ""}`} onClick={() => setTab("printer")}>
+          Printer
+        </button>
       </nav>
 
       {/* ── TAB: Custom Order ── */}
@@ -172,6 +176,10 @@ export default function App() {
             </div>
           </section>
         </>
+      )}
+
+      {tab === "printer" && (
+        <PrinterSettings onApplied={(cfg) => setPrinter(cfg || null)} />
       )}
     </main>
   );

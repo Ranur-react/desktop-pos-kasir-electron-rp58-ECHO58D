@@ -31,6 +31,8 @@ export default function CustomOrder({ orders, summary, onRefresh }) {
   const [catalogSearch, setCatalogSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
   const [selectedProductId, setSelectedProductId] = useState(null);
+  const [manualPrice, setManualPrice] = useState("");
+  const [manualQty, setManualQty] = useState(1);
 
   const [cart, setCart] = useState([]);
   const [cartSearch, setCartSearch] = useState("");
@@ -99,6 +101,14 @@ export default function CustomOrder({ orders, summary, onRefresh }) {
     });
   }, [catalog.products, activeCategory, catalogSearch]);
 
+  useEffect(() => {
+    const q = catalogSearch.trim();
+    if (!q) return;
+    if (filteredProducts.length > 0) {
+      setSelectedProductId(filteredProducts[0].id);
+    }
+  }, [catalogSearch, filteredProducts]);
+
   const cartTotal = cart.reduce((s, item) => s + item.price * item.qty, 0);
 
   const filteredCart = useMemo(() => {
@@ -139,6 +149,42 @@ export default function CustomOrder({ orders, summary, onRefresh }) {
       }
     ]);
     setStatus("");
+  }
+
+  function addManualFallbackToCart() {
+    const name = catalogSearch.trim();
+    const p = Number(manualPrice);
+    const q = Number(manualQty);
+
+    if (!name) {
+      setStatus("Isi nama produk di kolom pencarian terlebih dahulu.");
+      return;
+    }
+    if (!Number.isFinite(p) || p <= 0) {
+      setStatus("Harga manual harus lebih dari 0.");
+      return;
+    }
+    if (!Number.isFinite(q) || q < 1) {
+      setStatus("Qty manual minimal 1.");
+      return;
+    }
+
+    setCart((prev) => [
+      ...prev,
+      {
+        id: Date.now() + Math.random(),
+        title: name,
+        price: p,
+        qty: q,
+        sku: null,
+        variantTitle: null,
+        productHandle: null
+      }
+    ]);
+
+    setManualPrice("");
+    setManualQty(1);
+    setStatus("Produk custom ditambahkan ke keranjang.");
   }
 
   function removeFromCart(id) {
@@ -250,7 +296,36 @@ export default function CustomOrder({ orders, summary, onRefresh }) {
         <div className="catalog-layout">
           <div className="catalog-products-list">
             {filteredProducts.length === 0 && (
-              <div className="empty-cell">Tidak ada produk pada filter saat ini.</div>
+              <div className="manual-fallback-box">
+                <div className="empty-cell">Tidak ada produk pada filter saat ini.</div>
+                {catalogSearch.trim() && (
+                  <>
+                    <p className="small-text manual-fallback-label">
+                      Tambah sebagai custom order: <strong>{catalogSearch.trim()}</strong>
+                    </p>
+                    <div className="manual-fallback-form">
+                      <input
+                        type="number"
+                        min="0"
+                        step="100"
+                        placeholder="Harga custom"
+                        value={manualPrice}
+                        onChange={(e) => setManualPrice(e.target.value)}
+                      />
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="Qty"
+                        value={manualQty}
+                        onChange={(e) => setManualQty(Math.max(1, Number(e.target.value) || 1))}
+                      />
+                      <button className="btn btn-save" onClick={addManualFallbackToCart}>
+                        + Custom
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
             {filteredProducts.map((p) => (
               <button

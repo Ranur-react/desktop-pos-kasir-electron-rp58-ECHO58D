@@ -145,10 +145,65 @@ npm.cmd run dev
 - Perintah drawer saat ini: `ESC p 0 25 250`
 - Ubah pulsa di `electron/services/printer.js` jika tipe drawer butuh timing lain.
 
+## Fitur Baru (Catalog + Printer Settings)
+
+- Order dari katalog produk CSV Shopify (`assets/*.csv`)
+- Search produk + SKU + kategori
+- Auto-select hasil search paling relevan (tanpa klik manual)
+- Fallback custom order: jika produk tidak ditemukan, operator tetap bisa tambah item manual dari kolom search
+- Tab `Printer` untuk:
+  - melihat daftar printer Windows
+  - memilih default thermal printer
+  - simpan ke `.env` (`PRINTER_INTERFACE`)
+
+## Tutorial Release App Untuk User Umum (.exe / .msi)
+
+### 1) Siapkan dependency packaging
+
+```powershell
+npm.cmd install
+```
+
+### 2) Build installer Windows (.exe + portable)
+
+```powershell
+npm.cmd run pack:win
+```
+
+Output ada di folder `release/`:
+
+- `Barangmudo POS Setup x.y.z.exe` (installer)
+- `Barangmudo POS x.y.z.exe` (portable)
+
+### 3) Build installer MSI
+
+```powershell
+npm.cmd run pack:msi
+```
+
+Output di folder `release/`:
+
+- `Barangmudo POS Setup x.y.z.msi`
+
+### 4) File yang dibagikan ke user
+
+Pilih salah satu:
+
+- Installer `.exe` (paling umum)
+- Installer `.msi` (untuk kebutuhan enterprise/IT policy)
+- Portable `.exe` (tanpa instalasi)
+
+### 5) Checklist sebelum dibagikan
+
+- Printer thermal sudah terpasang di Windows user
+- Tab `Printer` di app sudah dipakai untuk memilih default printer
+- Folder `assets` berisi CSV produk terbaru
+- File `.env` sudah berisi identitas toko (STORE_TITLE, STORE_ADDRESS, dll)
+
 ## Catatan Produksi
 
-Project ini masih template pengembangan. Untuk produksi disarankan:
+Untuk produksi disarankan:
 
-- Tambah logging error terstruktur
-- Tambah backup data otomatis
-- Tambah pengaturan printer dari UI (tanpa env manual)
+- Tambah code signing certificate agar installer tidak dianggap unknown publisher
+- Tambah backup otomatis untuk folder `pos-data`
+- Tambah auto-update mechanism (mis. GitHub Releases / private update server)

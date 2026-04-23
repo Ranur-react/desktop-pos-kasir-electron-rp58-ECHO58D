@@ -4,14 +4,22 @@ const os = require("os");
 const { app } = require("electron");
 const { printer: ThermalPrinter, types: PrinterTypes } = require("node-thermal-printer");
 const QRCode = require("qrcode");
+const windowsPrinterDriver = require("./windows-printer-driver");
 
-function loadDotEnv() {
-  const appRoot = app.isPackaged
+function getAppRoot() {
+  return app.isPackaged
     ? path.dirname(process.execPath)
     : path.resolve(__dirname, "..", "..");
-  const envPath = path.join(appRoot, ".env");
+}
 
+function getEnvPath() {
+  return path.join(getAppRoot(), ".env");
+}
+
+function loadDotEnv() {
+  const envPath = getEnvPath();
   const values = {};
+
   if (!fs.existsSync(envPath)) {
     return values;
   }
@@ -25,10 +33,7 @@ function loadDotEnv() {
 
     const eqIdx = trimmed.indexOf("=");
     const key = trimmed.slice(0, eqIdx).trim();
-    const value = trimmed
-      .slice(eqIdx + 1)
-      .trim()
-      .replace(/^["']|["']$/g, "");
+    const value = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, "");
     values[key] = value;
   }
 
@@ -49,110 +54,90 @@ function getConfigValue(dotEnv, key, fallback = "") {
   return fallback;
 }
 
-const DOT_ENV = loadDotEnv();
-const PRINTER_INTERFACE = getConfigValue(DOT_ENV, "PRINTER_INTERFACE", "printer:RP58 Printer");
-const PRINTER_CHAR_WIDTH = Number(getConfigValue(DOT_ENV, "PRINTER_CHAR_WIDTH", "32")) || 32;
-const STORE_TITLE = getConfigValue(DOT_ENV, "STORE_TITLE", "Nama Toko");
-const STORE_SUBTITLE = getConfigValue(DOT_ENV, "STORE_SUBTITLE", "");
-const STORE_ADDRESS = getConfigValue(DOT_ENV, "STORE_ADDRESS", "");
-const STORE_WA = getConfigValue(DOT_ENV, "STORE_WA", "");
-const STORE_LOGO_PATH_RAW = getConfigValue(DOT_ENV, "STORE_LOGO_PATH", "");
-const QRIS_STATIC_CONTENT = getConfigValue(DOT_ENV, "QRIS_STATIC_CONTENT", "");
-
 function resolveLogoPath(logoPathRaw) {
-  if (!logoPathRaw) {
-    return "";
-  }
-
-  if (path.isAbsolute(logoPathRaw)) {
-    return logoPathRaw;
-  }
-
-  const appRoot = app.isPackaged
-    ? path.dirname(process.execPath)
-    : path.resolve(__dirname, "..", "..");
-  return path.resolve(appRoot, logoPathRaw);
+  if (!logoPathRaw) return "";
+  if (path.isAbsolute(logoPathRaw)) return logoPathRaw;
+  return path.resolve(getAppRoot(), logoPathRaw);
 }
 
-const STORE_LOGO_PATH = resolveLogoPath(STORE_LOGO_PATH_RAW);
+function getRuntimeConfig() {
+  const dotEnv = loadDotEnv();
+  const printerInterface = getConfigValue(dotEnv, "PRINTER_INTERFACE", "printer:RP58 Printer");
+  const storeLogoPathRaw = getConfigValue(dotEnv, "STORE_LOGO_PATH", "");
 
-
-async function printStoreHeader(printer) {
-  printer.alignCenter();
-
-  if (STORE_LOGO_PATH && fs.existsSync(STORE_LOGO_PATH)) {
-    try {
-      await printer.printImage(STORE_LOGO_PATH);
-      printer.newLine();
-    } catch {
-      // Skip logo if image format/path is not supported by printer library.
-    }
-  }
-
-  printer.bold(true);
-  printer.println(STORE_TITLE);
-  printer.bold(false);
-
-  if (STORE_SUBTITLE) {
-    printer.println(STORE_SUBTITLE);
-  }
-  if (STORE_ADDRESS) {
-    // Use Font B for a smaller address line when supported by the printer.
-    if (typeof printer.setTypeFontB === "function") {
-      printer.setTypeFontB();
-    }
-    const compactAddressLine = STORE_WA
-      ? `${STORE_ADDRESS} | WA: ${STORE_WA}`
-      : STORE_ADDRESS;
-    printer.println(compactAddressLine);
-    if (typeof printer.setTypeFontA === "function") {
-      printer.setTypeFontA();
-    }
-  } else if (STORE_WA) {
-    printer.println(`WA: ${STORE_WA}`);
-  }
-
-  // Add breathing space before section titles like POS/Custom Order Receipt.
-  printer.newLine();
+  return {
+    printerInterface,
+    printerCharWidth: Number(getConfigValue(dotEnv, "PRINTER_CHAR_WIDTH", "32")) || 32,
+    storeTitle: getConfigValue(dotEnv, "STORE_TITLE", "Nama Toko"),
+    storeSubtitle: getConfigValue(dotEnv, "STORE_SUBTITLE", ""),
+    storeAddress: getConfigValue(dotEnv, "STORE_ADDRESS", ""),
+    storeWa: getConfigValue(dotEnv, "STORE_WA", ""),
+    storeLogoPath: resolveLogoPath(storeLogoPathRaw),
+    qrisStaticContent: getConfigValue(dotEnv, "QRIS_STATIC_CONTENT", "")
+  };
 }
 
-function resolvePrinterDriver() {
-  if (!PRINTER_INTERFACE.startsWith("printer:")) {
+function setEnvKey(key, value) {
+  const envPath = getEnvPath();
+  const lineValue = String(value || "").trim();
+
+  let lines = [];
+  if (fs.existsSync(envPath)) {
+    lines = fs.readFileSync(envPath, "utf-8").split(/\r?\n/);
+  }
+
+  let found = false;
+  const nextLines = lines.map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) {
+      return line;
+    }
+
+    const eqIdx = trimmed.indexOf("=");
+    const existingKey = trimmed.slice(0, eqIdx).trim();
+    if (existingKey === key) {
+      found = true;
+      return `${key}=${lineValue}`;
+    }
+    return line;
+  });
+
+  if (!found) {
+    nextLines.push(`${key}=${lineValue}`);
+  }
+
+  fs.writeFileSync(envPath, nextLines.join("\n"), "utf-8");
+  process.env[key] = lineValue;
+}
+
+function resolvePrinterDriver(printerInterface) {
+  if (!printerInterface.startsWith("printer:")) {
     return undefined;
   }
 
   try {
     return require("electron-printer");
-  } catch {
-    // Package ini sering tidak kompatibel dengan Electron modern.
-  }
+  } catch {}
 
   try {
     return require("printer");
-  } catch {
-    // Fallback tanpa native addon untuk Windows.
-  }
+  } catch {}
 
   if (process.platform === "win32") {
-    return require("./windows-printer-driver");
+    return windowsPrinterDriver;
   }
 
-  throw new Error(
-    "Driver printer belum tersedia. Install salah satu: npm install printer"
-  );
+  throw new Error("Driver printer belum tersedia. Install salah satu: npm install printer");
 }
 
 function createPrinter() {
-  const driver = resolvePrinterDriver();
-
+  const cfg = getRuntimeConfig();
   return new ThermalPrinter({
     type: PrinterTypes.EPSON,
-    width: PRINTER_CHAR_WIDTH,
-    interface: PRINTER_INTERFACE,
-    driver,
-    options: {
-      timeout: 5000
-    },
+    width: cfg.printerCharWidth,
+    interface: cfg.printerInterface,
+    driver: resolvePrinterDriver(cfg.printerInterface),
+    options: { timeout: 5000 },
     characterSet: "SLOVENIA",
     removeSpecialCharacters: false,
     lineCharacter: "-"
@@ -174,17 +159,52 @@ function formatDate(value) {
   }).format(new Date(value));
 }
 
-async function printReceipt(tx) {
-  const printer = createPrinter();
+async function printStoreHeader(printer, cfg) {
+  printer.alignCenter();
 
-  const connected = await printer.isPrinterConnected();
-  if (!connected) {
-    throw new Error(
-      `Printer tidak terdeteksi di interface \"${PRINTER_INTERFACE}\". Cek nama printer/port.`
-    );
+  if (cfg.storeLogoPath && fs.existsSync(cfg.storeLogoPath)) {
+    try {
+      await printer.printImage(cfg.storeLogoPath);
+      printer.newLine();
+    } catch {}
   }
 
-  await printStoreHeader(printer);
+  printer.bold(true);
+  printer.println(cfg.storeTitle);
+  printer.bold(false);
+
+  if (cfg.storeSubtitle) {
+    printer.println(cfg.storeSubtitle);
+  }
+
+  if (cfg.storeAddress) {
+    if (typeof printer.setTypeFontB === "function") {
+      printer.setTypeFontB();
+    }
+    const compactAddressLine = cfg.storeWa
+      ? `${cfg.storeAddress} | WA: ${cfg.storeWa}`
+      : cfg.storeAddress;
+    printer.println(compactAddressLine);
+    if (typeof printer.setTypeFontA === "function") {
+      printer.setTypeFontA();
+    }
+  } else if (cfg.storeWa) {
+    printer.println(`WA: ${cfg.storeWa}`);
+  }
+
+  printer.newLine();
+}
+
+async function printReceipt(tx) {
+  const cfg = getRuntimeConfig();
+  const printer = createPrinter();
+  const connected = await printer.isPrinterConnected();
+
+  if (!connected) {
+    throw new Error(`Printer tidak terdeteksi di interface "${cfg.printerInterface}". Cek nama printer/port.`);
+  }
+
+  await printStoreHeader(printer, cfg);
   printer.alignCenter();
   printer.println("POS - Bukti Transaksi");
   printer.drawLine();
@@ -201,7 +221,6 @@ async function printReceipt(tx) {
   printer.println("Terima kasih");
   printer.newLine();
 
-  // Perintah standar kick cash drawer (pin 2, pulse 120/240)
   printer.raw(Buffer.from([0x1b, 0x70, 0x00, 0x19, 0xfa]));
   printer.cut();
 
@@ -211,43 +230,16 @@ async function printReceipt(tx) {
   }
 }
 
-async function openCashDrawer() {
-  const printer = createPrinter();
-  const connected = await printer.isPrinterConnected();
-
-  if (!connected) {
-    throw new Error(
-      `Printer tidak terdeteksi di interface \"${PRINTER_INTERFACE}\". Cek nama printer/port.`
-    );
-  }
-
-  printer.raw(Buffer.from([0x1b, 0x70, 0x00, 0x19, 0xfa]));
-  await printer.execute();
-}
-
-function getPrinterConfig() {
-  return {
-    interface: PRINTER_INTERFACE,
-    storeTitle: STORE_TITLE,
-    storeSubtitle: STORE_SUBTITLE,
-    storeAddress: STORE_ADDRESS,
-    storeWa: STORE_WA,
-    hasStoreLogo: Boolean(STORE_LOGO_PATH && fs.existsSync(STORE_LOGO_PATH)),
-    type: "EPSON/ESC-POS"
-  };
-}
-
 async function printOrderReceipt(order) {
+  const cfg = getRuntimeConfig();
   const printer = createPrinter();
-
   const connected = await printer.isPrinterConnected();
+
   if (!connected) {
-    throw new Error(
-      `Printer tidak terdeteksi di interface "${PRINTER_INTERFACE}". Cek nama printer/port.`
-    );
+    throw new Error(`Printer tidak terdeteksi di interface "${cfg.printerInterface}". Cek nama printer/port.`);
   }
 
-  await printStoreHeader(printer);
+  await printStoreHeader(printer, cfg);
   printer.alignCenter();
   printer.println("Custom Order Receipt");
   printer.drawLine();
@@ -289,25 +281,28 @@ async function printOrderReceipt(order) {
 }
 
 async function getQrisImageDataUrl() {
-  if (!QRIS_STATIC_CONTENT) {
+  const cfg = getRuntimeConfig();
+  if (!cfg.qrisStaticContent) {
     return { imageDataUrl: "", qrisContent: "" };
   }
-  const dataUrl = await QRCode.toDataURL(QRIS_STATIC_CONTENT, {
+
+  const dataUrl = await QRCode.toDataURL(cfg.qrisStaticContent, {
     errorCorrectionLevel: "M",
     width: 256,
     margin: 2
   });
-  return { imageDataUrl: dataUrl, qrisContent: QRIS_STATIC_CONTENT };
+
+  return { imageDataUrl: dataUrl, qrisContent: cfg.qrisStaticContent };
 }
 
 async function printQrisStatic(amountValue) {
-  if (!QRIS_STATIC_CONTENT) {
+  const cfg = getRuntimeConfig();
+  if (!cfg.qrisStaticContent) {
     throw new Error("QRIS_STATIC_CONTENT belum diisi di .env");
   }
 
-  // Generate QR code as temporary PNG file
   const tmpFile = path.join(os.tmpdir(), `qris-static-${Date.now()}.png`);
-  await QRCode.toFile(tmpFile, QRIS_STATIC_CONTENT, {
+  await QRCode.toFile(tmpFile, cfg.qrisStaticContent, {
     errorCorrectionLevel: "M",
     width: 380,
     margin: 1
@@ -317,10 +312,10 @@ async function printQrisStatic(amountValue) {
     const printer = createPrinter();
     const connected = await printer.isPrinterConnected();
     if (!connected) {
-      throw new Error(`Printer tidak terdeteksi di interface "${PRINTER_INTERFACE}". Cek nama printer/port.`);
+      throw new Error(`Printer tidak terdeteksi di interface "${cfg.printerInterface}". Cek nama printer/port.`);
     }
 
-    await printStoreHeader(printer);
+    await printStoreHeader(printer, cfg);
     printer.alignCenter();
     printer.bold(true);
     printer.println("QRIS PEMBAYARAN");
@@ -349,8 +344,53 @@ async function printQrisStatic(amountValue) {
       throw new Error("Gagal mencetak slip QRIS.");
     }
   } finally {
-    try { fs.unlinkSync(tmpFile); } catch {}
+    try {
+      fs.unlinkSync(tmpFile);
+    } catch {}
   }
+}
+
+async function openCashDrawer() {
+  const cfg = getRuntimeConfig();
+  const printer = createPrinter();
+  const connected = await printer.isPrinterConnected();
+
+  if (!connected) {
+    throw new Error(`Printer tidak terdeteksi di interface "${cfg.printerInterface}". Cek nama printer/port.`);
+  }
+
+  printer.raw(Buffer.from([0x1b, 0x70, 0x00, 0x19, 0xfa]));
+  await printer.execute();
+}
+
+function getPrinterConfig() {
+  const cfg = getRuntimeConfig();
+  return {
+    interface: cfg.printerInterface,
+    storeTitle: cfg.storeTitle,
+    storeSubtitle: cfg.storeSubtitle,
+    storeAddress: cfg.storeAddress,
+    storeWa: cfg.storeWa,
+    hasStoreLogo: Boolean(cfg.storeLogoPath && fs.existsSync(cfg.storeLogoPath)),
+    type: "EPSON/ESC-POS"
+  };
+}
+
+function listAvailablePrinters() {
+  const list = windowsPrinterDriver.getPrinters() || [];
+  return list.map((p) => ({
+    name: p.name,
+    interface: `printer:${p.name}`
+  }));
+}
+
+function setDefaultPrinterInterface(printerInterface) {
+  if (!printerInterface || !printerInterface.startsWith("printer:")) {
+    throw new Error("Format printer interface tidak valid. Contoh: printer:RP58 Printer");
+  }
+
+  setEnvKey("PRINTER_INTERFACE", printerInterface);
+  return getPrinterConfig();
 }
 
 module.exports = {
@@ -359,5 +399,8 @@ module.exports = {
   printQrisStatic,
   openCashDrawer,
   getPrinterConfig,
-  getQrisImageDataUrl
+  getQrisImageDataUrl,
+  listAvailablePrinters,
+  setDefaultPrinterInterface,
+  printQrisSlip: printQrisStatic
 };

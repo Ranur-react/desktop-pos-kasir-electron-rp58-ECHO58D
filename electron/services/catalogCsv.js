@@ -10,7 +10,19 @@ function getAppRoot(app) {
 }
 
 function getAssetsDir(app) {
-  return path.join(getAppRoot(app), "assets");
+  const candidates = [
+    path.join(getAppRoot(app), "assets"),
+    path.join(process.resourcesPath || "", "assets"),
+    path.join(app.getAppPath(), "assets")
+  ].filter(Boolean);
+
+  for (const dir of candidates) {
+    if (fs.existsSync(dir)) {
+      return dir;
+    }
+  }
+
+  return candidates[0];
 }
 
 function parseCsv(text) {

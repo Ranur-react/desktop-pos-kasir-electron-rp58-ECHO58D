@@ -13,7 +13,9 @@ const {
   printQrisStatic,
   openCashDrawer,
   getPrinterConfig,
-  getQrisImageDataUrl
+  getQrisImageDataUrl,
+  listAvailablePrinters,
+  setDefaultPrinterInterface
 } = require("./services/printer");
 const {
   getTodayOrders,
@@ -237,4 +239,21 @@ ipcMain.handle("catalog:get", async () => {
 
 ipcMain.handle("catalog:reload", async () => {
   return readCatalogFromAssets(app, { forceReload: true });
+});
+
+ipcMain.handle("printer:list", async () => {
+  return {
+    current: getPrinterConfig(),
+    printers: listAvailablePrinters()
+  };
+});
+
+ipcMain.handle("printer:set-default", async (_, payload) => {
+  const printerInterface = payload?.printerInterface;
+  const current = setDefaultPrinterInterface(printerInterface);
+  return {
+    success: true,
+    message: "Default printer berhasil disimpan.",
+    current
+  };
 });

@@ -18,5 +18,9 @@ contextBridge.exposeInMainWorld("posApi", {
 
   // Catalog CSV
   getCatalog: () => ipcRenderer.invoke("catalog:get"),
-  reloadCatalog: () => ipcRenderer.invoke("catalog:reload")
+  reloadCatalog: () => ipcRenderer.invoke("catalog:reload"),
+
+  // Printer settings
+  listPrinters: () => ipcRenderer.invoke("printer:list"),
+  setDefaultPrinter: (payload) => ipcRenderer.invoke("printer:set-default", payload)
 });
