@@ -27,6 +27,7 @@ const {
   queryQris,
   makeExternalId
 } = require("./services/dokuQris");
+const { readCatalogFromAssets } = require("./services/catalogCsv");
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -228,4 +229,12 @@ ipcMain.handle("order:get-by-id", async (_, orderId) => {
   const order = getOrderById(app, orderId);
   if (!order) throw new Error("Order tidak ditemukan.");
   return order;
+});
+
+ipcMain.handle("catalog:get", async () => {
+  return readCatalogFromAssets(app, { forceReload: false });
+});
+
+ipcMain.handle("catalog:reload", async () => {
+  return readCatalogFromAssets(app, { forceReload: true });
 });

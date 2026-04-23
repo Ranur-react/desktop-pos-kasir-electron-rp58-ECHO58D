@@ -95,7 +95,7 @@ export default function App() {
       {/* ── Tab Navigation ── */}
       <nav className="tab-bar">
         <button className={`tab-btn ${tab === "order" ? "tab-active" : ""}`} onClick={() => setTab("order")}>
-          Custom Order
+          Order Katalog
         </button>
         <button className={`tab-btn ${tab === "kasir" ? "tab-active" : ""}`} onClick={() => setTab("kasir")}>
           Kasir Cash

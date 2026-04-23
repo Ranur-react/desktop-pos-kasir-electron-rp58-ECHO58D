@@ -49,6 +49,9 @@ function createOrder(app, { items, paymentMethod, cashGiven, qrisMeta }) {
       price: Number(item.price),
       qty: Number(item.qty),
       lineTotal: Number(item.price) * Number(item.qty),
+      sku: item.sku || null,
+      variantTitle: item.variantTitle || null,
+      productHandle: item.productHandle || null,
       returStatus: null // null | "returned"
     })),
     subtotal,

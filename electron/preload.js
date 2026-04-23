@@ -14,5 +14,9 @@ contextBridge.exposeInMainWorld("posApi", {
 
   // QRIS Statis
   getQrisImage: () => ipcRenderer.invoke("qris:image"),
-  printQrisStatic: (payload) => ipcRenderer.invoke("qris:print", payload)
+  printQrisStatic: (payload) => ipcRenderer.invoke("qris:print", payload),
+
+  // Catalog CSV
+  getCatalog: () => ipcRenderer.invoke("catalog:get"),
+  reloadCatalog: () => ipcRenderer.invoke("catalog:reload")
 });
