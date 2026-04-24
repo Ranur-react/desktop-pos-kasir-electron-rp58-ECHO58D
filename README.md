@@ -2,6 +2,24 @@
 
 Aplikasi kasir desktop sederhana untuk transaksi cash harian dengan dukungan printer thermal dan cash drawer.
 
+## Changelog Terbaru
+
+### v1.0.0 - 2026-04-24
+
+**Fixes:**
+- ✅ Fixed: White screen on packaged app (Vite base path must be relative)
+- ✅ Fixed: Cannot write `.env` to Program Files folder → Now uses `AppData\Roaming` for installed version
+- ✅ Fixed: Cannot save transaction data in Program Files → Auto-redirects to AppData\Roaming
+- ✅ Fixed: "Proses Pembayaran" button not working in Program Files install → Caused by permission denied writing order JSON
+
+**Features:**
+- Added AppData-aware `.env` path resolution for installed Windows apps
+- Tab "Printer" untuk select & save default thermal printer
+- Order catalog system berbasis CSV
+- Auto-select search results
+- Custom order fallback jika produk tidak ditemukan
+- QRIS static payment support
+
 ## Tujuan Source Code
 
 Source code ini dibuat untuk kebutuhan **development** dan **pengujian** alur POS desktop, khususnya:
@@ -240,3 +258,62 @@ Untuk produksi disarankan:
 - Tambah code signing certificate agar installer tidak dianggap unknown publisher
 - Tambah backup otomatis untuk folder `pos-data`
 - Tambah auto-update mechanism (mis. GitHub Releases / private update server)
+
+## Lokasi File `.env` dan Data
+
+### Mode Development (npm run dev)
+
+- `.env` → `[project_root]\.env`
+- Data → `[project_root]\pos-data\`
+
+### Mode Installed (`.exe` atau `.msi`)
+
+**Lokasi `.env` di installed version berbeda untuk mencegah permission error:**
+
+- **Jika install di `Program Files` (installer):**
+  - `.env` → `C:\Users\[NamaUser]\AppData\Roaming\Barangmudo POS\.env`
+  - Data → `C:\Users\[NamaUser]\AppData\Roaming\Barangmudo POS\pos-data\`
+
+- **Jika pakai portable (tanpa installer):**
+  - `.env` → satu folder dengan `.exe` (lokasi portable)
+  - Data → `pos-data\` di satu folder dengan `.exe`
+
+**PENTING:** Jangan letakkan `.env` di folder `Program Files` — Windows melarang write ke folder tersebut kecuali Administrator. Aplikasi otomatis akan menggunakan `AppData\Roaming` jika terdeteksi di `Program Files`.
+
+### Migrate Konfigurasi dari Versi Lama
+
+Jika sudah ada `.env` dari instalasi lama:
+
+1. Manual copy ke lokasi baru:
+   - Open: `%APPDATA%` (tekan `Win + R` → ketik `%appdata%`)
+   - Buat folder: `Barangmudo POS`
+   - Copy dalam file `.env` ke sana
+
+2. Atau edit di tab `Printer` aplikasi:
+   - Buka app → tab `Printer`
+   - Pilih default printer
+   - Klik `Simpan Sebagai Default`
+   - App otomatis buat `.env` di lokasi yang tepat
+
+### Akses Data Transaksi
+
+Data transaksi JSON disimpan otomatis di folder `pos-data`:
+
+```
+C:\Users\[NamaUser]\AppData\Roaming\Barangmudo POS\pos-data\
+  orders-2026-04-12.json
+  orders-2026-04-13.json
+  transactions-2026-04-13.json
+```
+
+Setiap file adalah JSON array of transactions/orders per tanggal.
+
+**Untuk backup:** Bisa sync folder `pos-data` ke OneDrive atau backup tool lainnya. Atau set `DATA_PATH` di `.env` ke path OneDrive:
+
+```env
+# Contoh: simpan data di OneDrive
+DATA_PATH=C:\Users\NamaUser\OneDrive\Barangmudo Pos Data\pos-data
+
+# Atau relative path dari app folder
+# DATA_PATH=./pos-data
+```
