@@ -109,6 +109,8 @@ export default function CustomOrder({ orders, summary, onRefresh }) {
     }
   }, [catalogSearch, filteredProducts]);
 
+  const isCustomFallbackMode = filteredProducts.length === 0 && Boolean(catalogSearch.trim());
+
   const cartTotal = cart.reduce((s, item) => s + item.price * item.qty, 0);
 
   const filteredCart = useMemo(() => {
@@ -298,33 +300,6 @@ export default function CustomOrder({ orders, summary, onRefresh }) {
             {filteredProducts.length === 0 && (
               <div className="manual-fallback-box">
                 <div className="empty-cell">Tidak ada produk pada filter saat ini.</div>
-                {catalogSearch.trim() && (
-                  <>
-                    <p className="small-text manual-fallback-label">
-                      Tambah sebagai custom order: <strong>{catalogSearch.trim()}</strong>
-                    </p>
-                    <div className="manual-fallback-form">
-                      <input
-                        type="number"
-                        min="0"
-                        step="100"
-                        placeholder="Harga custom"
-                        value={manualPrice}
-                        onChange={(e) => setManualPrice(e.target.value)}
-                      />
-                      <input
-                        type="number"
-                        min="1"
-                        placeholder="Qty"
-                        value={manualQty}
-                        onChange={(e) => setManualQty(Math.max(1, Number(e.target.value) || 1))}
-                      />
-                      <button className="btn btn-save" onClick={addManualFallbackToCart}>
-                        + Custom
-                      </button>
-                    </div>
-                  </>
-                )}
               </div>
             )}
             {filteredProducts.map((p) => (
@@ -346,8 +321,45 @@ export default function CustomOrder({ orders, summary, onRefresh }) {
           </div>
 
           <div className="catalog-variant-panel">
-            {!selectedProduct && <div className="empty-cell">Pilih produk untuk menampilkan varian.</div>}
-            {selectedProduct && (
+            {isCustomFallbackMode && (
+              <div className="custom-order-panel">
+                <h3 className="catalog-product-title">Custom Order</h3>
+                <p className="small-text custom-order-label">
+                  Produk tidak ditemukan, tambah manual untuk: <strong>{catalogSearch.trim()}</strong>
+                </p>
+                <div className="custom-order-form">
+                  <label htmlFor="customPrice">Harga Custom</label>
+                  <input
+                    id="customPrice"
+                    type="number"
+                    min="0"
+                    step="100"
+                    placeholder="Contoh: 15000"
+                    value={manualPrice}
+                    onChange={(e) => setManualPrice(e.target.value)}
+                  />
+
+                  <label htmlFor="customQty">Qty</label>
+                  <input
+                    id="customQty"
+                    type="number"
+                    min="1"
+                    placeholder="1"
+                    value={manualQty}
+                    onChange={(e) => setManualQty(Math.max(1, Number(e.target.value) || 1))}
+                  />
+
+                  <button className="btn btn-save custom-order-add-btn" onClick={addManualFallbackToCart}>
+                    + Tambah ke Keranjang
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!isCustomFallbackMode && !selectedProduct && (
+              <div className="empty-cell">Pilih produk untuk menampilkan varian.</div>
+            )}
+            {!isCustomFallbackMode && selectedProduct && (
               <>
                 <h3 className="catalog-product-title">{selectedProduct.title}</h3>
                 <p className="small-text">Kategori: {selectedProduct.category}</p>
