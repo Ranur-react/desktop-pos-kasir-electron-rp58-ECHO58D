@@ -30,6 +30,7 @@ const {
   makeExternalId
 } = require("./services/dokuQris");
 const { readCatalogFromAssets } = require("./services/catalogCsv");
+const db = require("./services/dbConnection");
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -51,8 +52,27 @@ function createWindow() {
   }
 }
 
+async function initializeDatabase() {
+  try {
+    const config = db.loadConfigFromFile(app);
+    if (config && config.host && config.user && config.database) {
+      const result = await db.initializeConnection(app, config);
+      if (result.success) {
+        console.log("Database connected successfully");
+      } else {
+        console.warn("Failed to initialize database:", result.error);
+      }
+    }
+  } catch (err) {
+    console.error("Error initializing database:", err);
+  }
+}
+
 app.whenReady().then(() => {
   createWindow();
+
+  // Initialize database if configured
+  initializeDatabase();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -68,8 +88,8 @@ app.on("window-all-closed", () => {
 });
 
 ipcMain.handle("pos:get-bootstrap", async () => {
-  const transactions = getTodayTransactions(app);
-  const summary = getTodaySummary(app);
+  const transactions = await getTodayTransactions(app);
+  const summary = await getTodaySummary(app);
   const printer = getPrinterConfig();
 
   return {
@@ -119,14 +139,14 @@ ipcMain.handle("pos:add-transaction", async (_, payload) => {
 
   return {
     transaction: tx,
-    transactions: getTodayTransactions(app),
-    summary: getTodaySummary(app),
+    transactions: await getTodayTransactions(app),
+    summary: await getTodaySummary(app),
     printResult
   };
 });
 
 ipcMain.handle("pos:print-last", async () => {
-  const latest = getLatestTransaction(app);
+  const latest = await getLatestTransaction(app);
   if (!latest) {
     throw new Error("Belum ada transaksi hari ini untuk dicetak.");
   }
@@ -151,8 +171,8 @@ ipcMain.handle("pos:open-drawer", async () => {
 
 ipcMain.handle("order:get-today", async () => {
   return {
-    orders: getTodayOrders(app),
-    summary: getTodayOrdersSummary(app)
+    orders: await getTodayOrders(app),
+    summary: await getTodayOrdersSummary(app)
   };
 });
 
@@ -197,8 +217,8 @@ ipcMain.handle("order:create", async (_, payload) => {
 
   return {
     order,
-    orders: getTodayOrders(app),
-    summary: getTodayOrdersSummary(app),
+    orders: await getTodayOrders(app),
+    summary: await getTodayOrdersSummary(app),
     printResult
   };
 });
@@ -222,13 +242,13 @@ ipcMain.handle("order:retur", async (_, payload) => {
   const order = returOrderItem(app, { orderId, lineId, reason });
   return {
     order,
-    orders: getTodayOrders(app),
-    summary: getTodayOrdersSummary(app)
+    orders: await getTodayOrders(app),
+    summary: await getTodayOrdersSummary(app)
   };
 });
 
 ipcMain.handle("order:get-by-id", async (_, orderId) => {
-  const order = getOrderById(app, orderId);
+  const order = await getOrderById(app, orderId);
   if (!order) throw new Error("Order tidak ditemukan.");
   return order;
 });
@@ -239,6 +259,58 @@ ipcMain.handle("catalog:get", async () => {
 
 ipcMain.handle("catalog:reload", async () => {
   return readCatalogFromAssets(app, { forceReload: true });
+});
+
+// ── Database Configuration IPC ──
+
+ipcMain.handle("db:get-config", async () => {
+  const config = db.loadConfigFromFile(app);
+  return {
+    config,
+    isConnected: db.isConnected()
+  };
+});
+
+ipcMain.handle("db:test-connection", async (_, config) => {
+  return db.testConnection(config);
+});
+
+ipcMain.handle("db:save-config", async (_, config) => {
+  try {
+    // Save config to file
+    db.saveConfigToFile(app, config);
+    
+    // Initialize connection
+    const result = await db.initializeConnection(app, config);
+    
+    if (result.success) {
+      return {
+        success: true,
+        config,
+        isConnected: true
+      };
+    } else {
+      return {
+        success: false,
+        error: result.error
+      };
+    }
+  } catch (err) {
+    return {
+      success: false,
+      error: err.message
+    };
+  }
+});
+
+ipcMain.handle("db:clear-config", async () => {
+  try {
+    await db.closeConnection();
+    db.deleteConfigFile(app);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 });
 
 ipcMain.handle("printer:list", async () => {

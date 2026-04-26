@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { resolveDataDir } = require("./dataPath");
+const db = require("./dbConnection");
 
 function getDateKey() {
   const now = new Date();
@@ -32,12 +33,125 @@ function writeOrders(app, orders) {
   fs.writeFileSync(filePath, JSON.stringify(orders, null, 2), "utf-8");
 }
 
-function getTodayOrders(app) {
+// Database functions
+async function readOrdersFromDB() {
+  try {
+    const pool = await db.getPool();
+    if (!pool) return [];
+
+    const today = getDateKey();
+    const [orderRows] = await pool.execute(
+      `SELECT * FROM orders 
+       WHERE created_date = ? 
+       ORDER BY created_at DESC`,
+      [today]
+    );
+
+    if (orderRows.length === 0) return [];
+
+    const orders = [];
+    for (const orderRow of orderRows) {
+      const [itemRows] = await pool.execute(
+        `SELECT * FROM order_items WHERE order_id = ?`,
+        [orderRow.id]
+      );
+
+      orders.push({
+        id: orderRow.id,
+        items: itemRows.map((item) => ({
+          lineId: item.line_id,
+          title: item.title,
+          price: Number(item.price),
+          qty: item.qty,
+          lineTotal: Number(item.line_total),
+          sku: item.sku,
+          variantTitle: item.variant_title,
+          productHandle: item.product_handle,
+          returStatus: item.retur_status
+        })),
+        subtotal: Number(orderRow.subtotal),
+        paymentMethod: orderRow.payment_method,
+        cashGiven: orderRow.cash_given ? Number(orderRow.cash_given) : null,
+        change: Number(orderRow.change_amount),
+        qrisMeta: orderRow.qris_meta ? JSON.parse(orderRow.qris_meta) : null,
+        status: orderRow.status,
+        returHistory: [],
+        createdAt: orderRow.created_at.toISOString(),
+        paidAt: orderRow.paid_at.toISOString()
+      });
+    }
+
+    return orders;
+  } catch (err) {
+    console.error("Error reading orders from DB:", err);
+    return [];
+  }
+}
+
+async function writeOrderToDB(order) {
+  try {
+    const pool = await db.getPool();
+    if (!pool) return null;
+
+    const createdAt = new Date(order.createdAt);
+    const paidAt = new Date(order.paidAt);
+    const createdDate = createdAt.toISOString().split("T")[0];
+
+    // Insert order
+    await pool.execute(
+      `INSERT INTO orders (id, subtotal, payment_method, cash_given, change_amount, qris_meta, status, created_at, created_date, paid_at) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        order.id,
+        order.subtotal,
+        order.paymentMethod,
+        order.cashGiven,
+        order.change,
+        order.qrisMeta ? JSON.stringify(order.qrisMeta) : null,
+        order.status,
+        createdAt,
+        createdDate,
+        paidAt
+      ]
+    );
+
+    // Insert order items
+    for (const item of order.items) {
+      await pool.execute(
+        `INSERT INTO order_items (line_id, order_id, title, price, qty, line_total, sku, variant_title, product_handle, retur_status, created_at) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          item.lineId,
+          order.id,
+          item.title,
+          item.price,
+          item.qty,
+          item.lineTotal,
+          item.sku || null,
+          item.variantTitle || null,
+          item.productHandle || null,
+          item.returStatus || null,
+          createdAt
+        ]
+      );
+    }
+
+    return order;
+  } catch (err) {
+    console.error("Error writing order to DB:", err);
+    return null;
+  }
+}
+
+// Public functions
+async function getTodayOrders(app) {
+  if (db.isConnected()) {
+    return await readOrdersFromDB();
+  }
   return readOrders(app).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 function createOrder(app, { items, paymentMethod, cashGiven, qrisMeta }) {
-  const orders = readOrders(app);
   const now = new Date();
 
   const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0);
@@ -52,25 +166,37 @@ function createOrder(app, { items, paymentMethod, cashGiven, qrisMeta }) {
       sku: item.sku || null,
       variantTitle: item.variantTitle || null,
       productHandle: item.productHandle || null,
-      returStatus: null // null | "returned"
+      returStatus: null
     })),
     subtotal,
-    paymentMethod, // "cash" | "qris"
+    paymentMethod,
     cashGiven: paymentMethod === "cash" ? Number(cashGiven) : null,
     change: paymentMethod === "cash" ? Number(cashGiven) - subtotal : 0,
     qrisMeta: paymentMethod === "qris" ? (qrisMeta || null) : null,
-    status: "paid", // "paid" | "partial-return"
+    status: "paid",
     returHistory: [],
     createdAt: now.toISOString(),
     paidAt: now.toISOString()
   };
 
-  orders.push(order);
-  writeOrders(app, orders);
+  if (db.isConnected()) {
+    writeOrderToDB(order).catch((err) => {
+      console.error("Async DB write order failed:", err);
+    });
+  } else {
+    const orders = readOrders(app);
+    orders.push(order);
+    writeOrders(app, orders);
+  }
+
   return order;
 }
 
 function returOrderItem(app, { orderId, lineId, reason }) {
+  if (db.isConnected()) {
+    return returOrderItemDB(orderId, lineId, reason);
+  }
+
   const orders = readOrders(app);
   const order = orders.find((o) => o.id === orderId);
   if (!order) throw new Error("Order tidak ditemukan.");
@@ -95,7 +221,6 @@ function returOrderItem(app, { orderId, lineId, reason }) {
     returAt: now.toISOString()
   });
 
-  // Recalculate subtotal from non-returned items
   order.subtotal = order.items
     .filter((i) => i.returStatus !== "returned")
     .reduce((s, i) => s + i.lineTotal, 0);
@@ -111,11 +236,73 @@ function returOrderItem(app, { orderId, lineId, reason }) {
   return order;
 }
 
-function getOrderById(app, orderId) {
+async function returOrderItemDB(orderId, lineId, reason) {
+  try {
+    throw new Error("Retur order via database belum diimplementasi. Gunakan JSON file untuk saat ini.");
+  } catch (err) {
+    throw err;
+  }
+}
+
+async function getOrderById(app, orderId) {
+  if (db.isConnected()) {
+    return getOrderByIdDB(orderId);
+  }
   return readOrders(app).find((o) => o.id === orderId) || null;
 }
 
-function getTodayOrdersSummary(app) {
+async function getOrderByIdDB(orderId) {
+  try {
+    const pool = await db.getPool();
+    if (!pool) return null;
+
+    const [orderRows] = await pool.execute(
+      `SELECT * FROM orders WHERE id = ?`,
+      [orderId]
+    );
+
+    if (orderRows.length === 0) return null;
+
+    const orderRow = orderRows[0];
+    const [itemRows] = await pool.execute(
+      `SELECT * FROM order_items WHERE order_id = ?`,
+      [orderId]
+    );
+
+    return {
+      id: orderRow.id,
+      items: itemRows.map((item) => ({
+        lineId: item.line_id,
+        title: item.title,
+        price: Number(item.price),
+        qty: item.qty,
+        lineTotal: Number(item.line_total),
+        sku: item.sku,
+        variantTitle: item.variant_title,
+        productHandle: item.product_handle,
+        returStatus: item.retur_status
+      })),
+      subtotal: Number(orderRow.subtotal),
+      paymentMethod: orderRow.payment_method,
+      cashGiven: orderRow.cash_given ? Number(orderRow.cash_given) : null,
+      change: Number(orderRow.change_amount),
+      qrisMeta: orderRow.qris_meta ? JSON.parse(orderRow.qris_meta) : null,
+      status: orderRow.status,
+      returHistory: [],
+      createdAt: orderRow.created_at.toISOString(),
+      paidAt: orderRow.paid_at.toISOString()
+    };
+  } catch (err) {
+    console.error("Error getting order from DB:", err);
+    return null;
+  }
+}
+
+async function getTodayOrdersSummary(app) {
+  if (db.isConnected()) {
+    return await getTodayOrdersSummaryDB();
+  }
+
   const orders = readOrders(app);
   const paidOrders = orders.filter((o) => o.status === "paid" || o.status === "partial-return");
 
@@ -132,6 +319,48 @@ function getTodayOrdersSummary(app) {
   }, 0);
 
   return { totalSales, totalOrders, totalCash, totalQris, totalReturned };
+}
+
+async function getTodayOrdersSummaryDB() {
+  try {
+    const pool = await db.getPool();
+    if (!pool) return { totalSales: 0, totalOrders: 0, totalCash: 0, totalQris: 0, totalReturned: 0 };
+
+    const today = getDateKey();
+
+    const [paidOrders] = await pool.execute(
+      `SELECT * FROM orders 
+       WHERE created_date = ? AND (status = 'paid' OR status = 'partial-return')`,
+      [today]
+    );
+
+    if (paidOrders.length === 0) {
+      return { totalSales: 0, totalOrders: 0, totalCash: 0, totalQris: 0, totalReturned: 0 };
+    }
+
+    const totalSales = paidOrders.reduce((s, o) => s + Number(o.subtotal), 0);
+    const totalOrders = paidOrders.length;
+    const totalCash = paidOrders
+      .filter((o) => o.payment_method === "cash")
+      .reduce((s, o) => s + Number(o.subtotal), 0);
+    const totalQris = paidOrders
+      .filter((o) => o.payment_method === "qris")
+      .reduce((s, o) => s + Number(o.subtotal), 0);
+
+    const [allOrders] = await pool.execute(
+      `SELECT * FROM order_items WHERE retur_status = 'returned' AND order_id IN (
+        SELECT id FROM orders WHERE created_date = ?
+      )`,
+      [today]
+    );
+
+    const totalReturned = allOrders.reduce((s, item) => s + Number(item.line_total), 0);
+
+    return { totalSales, totalOrders, totalCash, totalQris, totalReturned };
+  } catch (err) {
+    console.error("Error getting summary from DB:", err);
+    return { totalSales: 0, totalOrders: 0, totalCash: 0, totalQris: 0, totalReturned: 0 };
+  }
 }
 
 module.exports = {

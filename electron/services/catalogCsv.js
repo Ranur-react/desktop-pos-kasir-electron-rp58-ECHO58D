@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const db = require("./dbConnection");
 
 let _cache = null;
 
@@ -226,7 +227,75 @@ function getCatalogSignature(csvFiles) {
     .join("|");
 }
 
-function readCatalogFromAssets(app, options = {}) {
+async function saveCatalogToDatabase(catalog) {
+  const pool = await db.getPool();
+  if (!pool) return;
+
+  const conn = await pool.getConnection();
+  const syncedAt = new Date();
+
+  try {
+    await conn.beginTransaction();
+
+    // Replace full catalog snapshot so DB is always aligned with latest CSV load.
+    await conn.execute("DELETE FROM catalog_variants");
+    await conn.execute("DELETE FROM catalog_products");
+
+    for (const product of catalog.products || []) {
+      const firstVariant = (product.variants && product.variants[0]) || null;
+      const sourceFile = firstVariant?.sourceFile || null;
+      const sourceModifiedAt = firstVariant?.sourceModifiedAt ? new Date(firstVariant.sourceModifiedAt) : null;
+
+      await conn.execute(
+        `INSERT INTO catalog_products
+          (id, handle, title, vendor, category, image_url, source_file, source_modified_at, synced_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          product.id,
+          product.handle,
+          product.title,
+          product.vendor || null,
+          product.category || null,
+          product.imageUrl || null,
+          sourceFile,
+          sourceModifiedAt,
+          syncedAt
+        ]
+      );
+
+      for (const variant of product.variants || []) {
+        await conn.execute(
+          `INSERT INTO catalog_variants
+            (id, product_id, sku, title, price, grams, weight_unit, inventory_qty, image_url, source_file, source_modified_at, synced_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            variant.id,
+            product.id,
+            variant.sku || null,
+            variant.title || null,
+            Number(variant.price || 0),
+            Number(variant.grams || 0),
+            variant.weightUnit || null,
+            variant.inventoryQty == null ? null : Number(variant.inventoryQty),
+            variant.imageUrl || null,
+            variant.sourceFile || null,
+            variant.sourceModifiedAt ? new Date(variant.sourceModifiedAt) : null,
+            syncedAt
+          ]
+        );
+      }
+    }
+
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+async function readCatalogFromAssets(app, options = {}) {
   const { forceReload = false } = options;
   const assetsDir = getAssetsDir(app);
 
@@ -277,6 +346,15 @@ function readCatalogFromAssets(app, options = {}) {
     sourceFilesCount: filesData.length,
     loadedAt: new Date().toISOString()
   };
+
+  if (db.isConnected()) {
+    try {
+      await saveCatalogToDatabase(data);
+    } catch (err) {
+      // Do not block POS flow if catalog DB sync fails.
+      console.error("Gagal menyimpan katalog CSV ke database:", err.message);
+    }
+  }
 
   _cache = { signature, data };
   return data;

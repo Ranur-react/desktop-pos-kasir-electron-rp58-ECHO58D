@@ -20,6 +20,12 @@ contextBridge.exposeInMainWorld("posApi", {
   getCatalog: () => ipcRenderer.invoke("catalog:get"),
   reloadCatalog: () => ipcRenderer.invoke("catalog:reload"),
 
+  // Database Configuration
+  getDatabaseConfig: () => ipcRenderer.invoke("db:get-config"),
+  testDatabaseConnection: (config) => ipcRenderer.invoke("db:test-connection", config),
+  saveDatabaseConfig: (config) => ipcRenderer.invoke("db:save-config", config),
+  clearDatabaseConfig: () => ipcRenderer.invoke("db:clear-config"),
+
   // Printer settings
   listPrinters: () => ipcRenderer.invoke("printer:list"),
   setDefaultPrinter: (payload) => ipcRenderer.invoke("printer:set-default", payload)
