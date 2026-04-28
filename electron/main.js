@@ -33,11 +33,16 @@ const { readCatalogFromAssets } = require("./services/catalogCsv");
 const db = require("./services/dbConnection");
 
 function createWindow() {
+  const windowIcon = app.isPackaged
+    ? undefined
+    : path.join(app.getAppPath(), "build", "icon.ico");
+
   const win = new BrowserWindow({
     width: 1100,
     height: 760,
     minWidth: 900,
     minHeight: 650,
+    icon: windowIcon,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
