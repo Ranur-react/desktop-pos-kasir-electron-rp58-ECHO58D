@@ -22,6 +22,44 @@ export default function PaymentModal({ total, loading, onPay, onClose }) {
   const canProcessCash = method === "cash" && Number.isFinite(cashNum) && cashNum >= total;
   const localLoading = loading || qrisBusy;
 
+  useEffect(() => {
+    function onKeydown(e) {
+      const key = e.key.toLowerCase();
+      const targetTag = String(e.target?.tagName || "").toLowerCase();
+      const isTyping = targetTag === "input" || targetTag === "textarea" || targetTag === "select" || e.target?.isContentEditable;
+
+      if (e.key === "Escape" && !localLoading) {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (method === null && !isTyping) {
+        if (key === "1") {
+          e.preventDefault();
+          setMethod("cash");
+        }
+        if (key === "2") {
+          e.preventDefault();
+          setMethod("qris");
+        }
+      }
+
+      if (method === "cash" && e.key === "Enter" && canProcessCash && !localLoading) {
+        e.preventDefault();
+        onPay("cash", cashGiven);
+      }
+
+      if (method === "qris" && e.key === "Enter" && qrisReady && !localLoading) {
+        e.preventDefault();
+        confirmQrisPayment();
+      }
+    }
+
+    window.addEventListener("keydown", onKeydown);
+    return () => window.removeEventListener("keydown", onKeydown);
+  }, [method, canProcessCash, localLoading, cashGiven, qrisReady, onPay, onClose]);
+
   // Load static QRIS image when QRIS method selected
   useEffect(() => {
     if (method !== "qris") return;
@@ -89,6 +127,7 @@ export default function PaymentModal({ total, loading, onPay, onClose }) {
             <button className="btn btn-qris" onClick={() => setMethod("qris")}>QRIS</button>
           </div>
         )}
+        {method === null && <p className="small-text">Shortcut: `1` Cash, `2` QRIS, `Esc` tutup</p>}
 
         {/* Step 2a: Cash — input uang */}
         {method === "cash" && (

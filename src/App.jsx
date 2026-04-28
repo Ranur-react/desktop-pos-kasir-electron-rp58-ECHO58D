@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import CustomOrder from "./CustomOrder";
 import PrinterSettings from "./PrinterSettings";
 import DatabaseSettings from "./DatabaseSettings";
@@ -25,6 +25,12 @@ function emptySummary() {
 
 function emptyOrderSummary() {
   return { totalSales: 0, totalOrders: 0, totalCash: 0, totalQris: 0, totalReturned: 0 };
+}
+
+function isTypingElement(target) {
+  if (!target) return false;
+  const tag = String(target.tagName || "").toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable === true;
 }
 
 export default function App() {
@@ -58,6 +64,9 @@ export default function App() {
     newPassword: ""
   });
 
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+
   // -- Kasir state --
   const [nominal, setNominal] = useState("");
   const [description, setDescription] = useState("");
@@ -74,15 +83,18 @@ export default function App() {
   const nominalNumber = useMemo(() => Number(nominal), [nominal]);
   const permissions = authState.permissions || {};
 
+  const nominalInputRef = useRef(null);
+  const descInputRef = useRef(null);
+
   const can = (key) => permissions[key] === true;
 
   const availableTabs = useMemo(() => {
     const tabs = [];
-    if (can("view_order")) tabs.push({ key: "order", label: "Order Katalog" });
-    if (can("view_kasir")) tabs.push({ key: "kasir", label: "Kasir Cash" });
-    if (can("view_printer")) tabs.push({ key: "printer", label: "Printer" });
-    if (can("view_database")) tabs.push({ key: "database", label: "Database" });
-    if (can("manage_accounts")) tabs.push({ key: "accounts", label: "Akun" });
+    if (can("view_order")) tabs.push({ key: "order", label: "Order Katalog", icon: "🛒" });
+    if (can("view_kasir")) tabs.push({ key: "kasir", label: "Kasir Cash", icon: "💵" });
+    if (can("view_printer")) tabs.push({ key: "printer", label: "Printer", icon: "🖨" });
+    if (can("view_database")) tabs.push({ key: "database", label: "Database", icon: "🗄" });
+    if (can("manage_accounts")) tabs.push({ key: "accounts", label: "Akun", icon: "👥" });
     return tabs;
   }, [permissions]);
 
@@ -150,6 +162,48 @@ export default function App() {
     init().catch(() => {});
   }, []);
 
+  useEffect(() => {
+    function onGlobalKeydown(e) {
+      if (!authState.user) return;
+      if (tab !== "kasir") return;
+
+      const typing = isTypingElement(e.target);
+      const key = e.key.toLowerCase();
+
+      if (e.key === "F2") {
+        e.preventDefault();
+        nominalInputRef.current?.focus();
+        return;
+      }
+
+      if (e.key === "F3") {
+        e.preventDefault();
+        descInputRef.current?.focus();
+        return;
+      }
+
+      if (typing && !(e.ctrlKey || e.metaKey)) return;
+
+      if ((e.ctrlKey || e.metaKey) && key === "i") {
+        e.preventDefault();
+        submitTransaction("in");
+      }
+
+      if ((e.ctrlKey || e.metaKey) && key === "u") {
+        e.preventDefault();
+        submitTransaction("out");
+      }
+
+      if ((e.ctrlKey || e.metaKey) && key === "p") {
+        e.preventDefault();
+        printLastReceipt();
+      }
+    }
+
+    window.addEventListener("keydown", onGlobalKeydown);
+    return () => window.removeEventListener("keydown", onGlobalKeydown);
+  }, [authState.user, tab, nominalNumber, description, loading, permissions]);
+
   async function handleSetupInitialAccount(e) {
     e.preventDefault();
     setAuthStatus("");
@@ -190,6 +244,8 @@ export default function App() {
       setOrderSummary(emptyOrderSummary());
       setStatus("Siap.");
       setAuthStatus(result.message || "Logout berhasil.");
+      setShowProfileMenu(false);
+      setShowPasswordModal(false);
     } catch (err) {
       setAuthStatus(`Logout gagal: ${err.message}`);
     }
@@ -210,6 +266,7 @@ export default function App() {
       });
       setSelfPassword({ currentPassword: "", newPassword: "" });
       setAuthStatus(result.message || "Password berhasil diubah.");
+      setShowPasswordModal(false);
     } catch (err) {
       setAuthStatus(`Ganti password gagal: ${err.message}`);
     }
@@ -267,7 +324,7 @@ export default function App() {
 
   if (authLoading) {
     return (
-      <main className="app-shell">
+      <main className="app-shell auth-shell">
         <section className="panel auth-panel">
           <h2>Memuat Sistem Akses...</h2>
           <p className="small-text">Sedang memeriksa status akun dan role akses.</p>
@@ -278,7 +335,7 @@ export default function App() {
 
   if (authState.needsSetup) {
     return (
-      <main className="app-shell">
+      <main className="app-shell auth-shell">
         <section className="panel auth-panel">
           <h2>Setup Akun Awal</h2>
           <p className="small-text">
@@ -341,7 +398,7 @@ export default function App() {
 
   if (!authState.user) {
     return (
-      <main className="app-shell">
+      <main className="app-shell auth-shell">
         <section className="panel auth-panel">
           <h2>Login Akun</h2>
           <p className="small-text">Masukkan username dan password untuk masuk ke aplikasi POS.</p>
@@ -376,56 +433,62 @@ export default function App() {
   }
 
   return (
-    <main className="app-shell">
-      <section className="panel auth-user-panel">
-        <div>
-          <h3>
-            Login sebagai: {authState.user.displayName || authState.user.username}
-          </h3>
-          <p className="small-text">
-            Username: <span className="mono">{authState.user.username}</span> | Role: {authState.user.role}
-          </p>
+    <main className="app-shell dashboard-shell">
+      <header className="dashboard-topbar panel">
+        <div className="topbar-brand">
+          <h1>Barangmudo POS</h1>
+          <p className="small-text">Operasional Kasir Harian</p>
         </div>
 
-        <div className="auth-user-actions">
-          <button className="btn btn-secondary" onClick={handleLogout}>Logout</button>
+        <div className="topbar-actions">
+          <button className="top-icon-btn" type="button" title="Notifikasi">
+            🔔
+            <span className="top-icon-badge">2</span>
+          </button>
+
+          <div className="profile-menu-wrap">
+            <button
+              className="top-icon-btn profile-btn"
+              type="button"
+              title="Menu Profil"
+              onClick={() => setShowProfileMenu((v) => !v)}
+            >
+              👤
+            </button>
+
+            {showProfileMenu && (
+              <div className="profile-dropdown panel">
+                <div className="profile-dropdown-head">
+                  <strong>{authState.user.displayName || authState.user.username}</strong>
+                  <p className="small-text">{authState.user.role}</p>
+                </div>
+                <button
+                  className="profile-item-btn"
+                  onClick={() => {
+                    setShowProfileMenu(false);
+                    setShowPasswordModal(true);
+                  }}
+                >
+                  Ubah Password
+                </button>
+                <button className="profile-item-btn profile-logout-btn" onClick={handleLogout}>
+                  Logout
+                </button>
+              </div>
+            )}
+          </div>
         </div>
+      </header>
 
-        <form className="self-password-form" onSubmit={handleSelfPasswordChange}>
-          <div className="database-form-group">
-            <label htmlFor="self-current-password">Password Saat Ini</label>
-            <input
-              id="self-current-password"
-              type="password"
-              value={selfPassword.currentPassword}
-              onChange={(e) => setSelfPassword((prev) => ({ ...prev, currentPassword: e.target.value }))}
-              placeholder="wajib untuk kasir"
-            />
-          </div>
-          <div className="database-form-group">
-            <label htmlFor="self-new-password">Password Baru</label>
-            <input
-              id="self-new-password"
-              type="password"
-              value={selfPassword.newPassword}
-              onChange={(e) => setSelfPassword((prev) => ({ ...prev, newPassword: e.target.value }))}
-              placeholder="minimal 6 karakter"
-            />
-          </div>
-          <button type="submit" className="btn btn-save">Ubah Password Saya</button>
-        </form>
-
-        {authStatus && <div className="status">{authStatus}</div>}
-      </section>
-
-      <nav className="tab-bar">
+      <nav className="tab-bar dashboard-nav panel">
         {availableTabs.map((item) => (
           <button
             key={item.key}
             className={`tab-btn ${tab === item.key ? "tab-active" : ""}`}
             onClick={() => setTab(item.key)}
           >
-            {item.label}
+            <span className="tab-icon">{item.icon}</span>
+            <span>{item.label}</span>
           </button>
         ))}
       </nav>
@@ -442,12 +505,18 @@ export default function App() {
 
       {tab === "kasir" && can("view_kasir") && (
         <>
+          <section className="panel kasir-shortcuts-panel">
+            <h3>Shortcut Kasir</h3>
+            <p className="small-text">F2: Nominal | F3: Deskripsi | Ctrl+I: Uang Masuk | Ctrl+U: Uang Keluar | Ctrl+P: Cetak Struk</p>
+          </section>
+
           <section className="panel form-panel">
-            <h1>POS Kasir Desktop</h1>
+            <h2>POS Kasir Cash</h2>
             <p className="small-text">Input transaksi cash harian dan cetak ke thermal printer.</p>
 
             <label htmlFor="nominal">Nominal (Rupiah)</label>
             <input
+              ref={nominalInputRef}
               id="nominal"
               type="number"
               min="0"
@@ -460,6 +529,7 @@ export default function App() {
 
             <label htmlFor="description">Deskripsi Transaksi</label>
             <input
+              ref={descInputRef}
               id="description"
               type="text"
               placeholder="Contoh: Penjualan kopi"
@@ -546,6 +616,48 @@ export default function App() {
           onAuthStateChanged={(nextState) => setAuthState(nextState)}
         />
       )}
+
+      {showPasswordModal && (
+        <div className="modal-overlay" onClick={() => setShowPasswordModal(false)}>
+          <section className="modal password-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Ubah Password</h2>
+            <p className="small-text">Akun: {authState.user.username}</p>
+
+            <form className="password-modal-form" onSubmit={handleSelfPasswordChange}>
+              <div className="database-form-group">
+                <label htmlFor="self-current-password">Password Saat Ini</label>
+                <input
+                  id="self-current-password"
+                  type="password"
+                  value={selfPassword.currentPassword}
+                  onChange={(e) => setSelfPassword((prev) => ({ ...prev, currentPassword: e.target.value }))}
+                  placeholder="wajib untuk kasir"
+                />
+              </div>
+
+              <div className="database-form-group">
+                <label htmlFor="self-new-password">Password Baru</label>
+                <input
+                  id="self-new-password"
+                  type="password"
+                  value={selfPassword.newPassword}
+                  onChange={(e) => setSelfPassword((prev) => ({ ...prev, newPassword: e.target.value }))}
+                  placeholder="minimal 6 karakter"
+                />
+              </div>
+
+              <div className="password-modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setShowPasswordModal(false)}>
+                  Batal
+                </button>
+                <button type="submit" className="btn btn-save">Simpan Password</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {authStatus && <div className="floating-status panel">{authStatus}</div>}
     </main>
   );
 }

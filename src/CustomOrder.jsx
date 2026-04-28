@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import PaymentModal from "./PaymentModal";
 import ReturModal from "./ReturModal";
 
@@ -50,6 +50,9 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
   const [expandedOrderId, setExpandedOrderId] = useState(null);
+
+  const catalogSearchRef = useRef(null);
+  const cartSearchRef = useRef(null);
 
   useEffect(() => {
     loadCatalog(false).catch(() => {});
@@ -268,9 +271,102 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
     }
   }
 
+  useEffect(() => {
+    function onKeydown(e) {
+      const targetTag = String(e.target?.tagName || "").toLowerCase();
+      const isTyping = targetTag === "input" || targetTag === "textarea" || targetTag === "select" || e.target?.isContentEditable;
+      const key = e.key.toLowerCase();
+
+      if ((e.ctrlKey || e.metaKey) && key === "k") {
+        e.preventDefault();
+        catalogSearchRef.current?.focus();
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && key === "l") {
+        e.preventDefault();
+        cartSearchRef.current?.focus();
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && key === "r") {
+        e.preventDefault();
+        loadCatalog(true).catch(() => {});
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && key === "b") {
+        e.preventDefault();
+        if (canCreateOrder && cart.length > 0 && !loading) {
+          setShowPayment(true);
+        }
+        return;
+      }
+
+      if ((e.altKey && key === "s") || (e.altKey && key === "h")) {
+        e.preventDefault();
+        if (key === "s") setShowSummary((v) => !v);
+        if (key === "h") setShowHistory((v) => !v);
+        return;
+      }
+
+      if (e.key === "Enter" && document.activeElement === catalogSearchRef.current) {
+        e.preventDefault();
+        if (!canCreateOrder) return;
+
+        if (isCustomFallbackMode) {
+          addManualFallbackToCart();
+          return;
+        }
+
+        if (selectedProduct?.variants?.length > 0) {
+          addVariantToCart(selectedProduct, selectedProduct.variants[0]);
+        }
+        return;
+      }
+
+      if (isTyping && !(e.ctrlKey || e.metaKey)) return;
+
+      if ((e.ctrlKey || e.metaKey) && key === "backspace") {
+        e.preventDefault();
+        if (cart.length > 0) {
+          const last = cart[cart.length - 1];
+          removeFromCart(last.id);
+        }
+      }
+
+      if ((e.ctrlKey || e.metaKey) && key === "arrowup") {
+        e.preventDefault();
+        if (cart.length > 0) {
+          const last = cart[cart.length - 1];
+          updateQty(last.id, 1);
+        }
+      }
+
+      if ((e.ctrlKey || e.metaKey) && key === "arrowdown") {
+        e.preventDefault();
+        if (cart.length > 0) {
+          const last = cart[cart.length - 1];
+          updateQty(last.id, -1);
+        }
+      }
+    }
+
+    window.addEventListener("keydown", onKeydown);
+    return () => window.removeEventListener("keydown", onKeydown);
+  }, [cart, loading, canCreateOrder, isCustomFallbackMode, selectedProduct, manualPrice, manualQty, catalogSearch]);
+
   return (
     <>
-      <section className="panel form-panel form-panel-inline">
+      <section className="panel order-shortcut-panel">
+        <h3>Shortcut Order</h3>
+        <p className="small-text">
+          Ctrl+K: Cari produk | Ctrl+L: Cari keranjang | Ctrl+B: Bayar | Ctrl+R: Reload CSV | Ctrl+Backspace: Hapus item terakhir | Ctrl+ArrowUp/ArrowDown: Qty item terakhir | Alt+S: Summary | Alt+H: Riwayat
+        </p>
+      </section>
+
+      <div className="order-main-grid">
+      <section className="panel form-panel form-panel-inline order-catalog-panel">
         <div className="catalog-header-row">
           <div>
             <h2>Katalog Produk (CSV Shopify)</h2>
@@ -285,6 +381,7 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
 
         <div className="catalog-toolbar">
           <input
+            ref={catalogSearchRef}
             className="search-input catalog-search"
             type="text"
             placeholder="Cari produk / SKU / kategori..."
@@ -417,10 +514,11 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
         {status && <div className="status">{status}</div>}
       </section>
 
-      <section className="panel cart-panel cart-panel-full">
+      <section className="panel cart-panel cart-panel-full order-cart-panel">
         <div className="section-header">
           <h2>Keranjang Belanja ({cart.length} item)</h2>
           <input
+            ref={cartSearchRef}
             className="search-input"
             type="text"
             placeholder="Cari di keranjang..."
@@ -507,6 +605,7 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
           </button>
         </div>
       </section>
+      </div>
 
       <section className="panel collapsible-panel">
         <button className="collapse-toggle" onClick={() => setShowSummary((v) => !v)}>
