@@ -53,9 +53,31 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
 
   const catalogSearchRef = useRef(null);
   const cartSearchRef = useRef(null);
+  const customPriceRef = useRef(null);
+  const customQtyRef = useRef(null);
+
+  function focusCatalogSearch() {
+    catalogSearchRef.current?.focus();
+    catalogSearchRef.current?.select?.();
+  }
+
+  function focusCustomPrice() {
+    customPriceRef.current?.focus();
+    customPriceRef.current?.select?.();
+  }
+
+  function focusCustomQty() {
+    customQtyRef.current?.focus();
+    customQtyRef.current?.select?.();
+  }
 
   useEffect(() => {
     loadCatalog(false).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    // Saat halaman order terbuka, fokus awal langsung ke pencarian produk.
+    focusCatalogSearch();
   }, []);
 
   async function loadCatalog(forceReload) {
@@ -200,6 +222,7 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
     setManualPrice("");
     setManualQty(1);
     setStatus("Produk custom ditambahkan ke keranjang.");
+    focusCatalogSearch();
   }
 
   function removeFromCart(id) {
@@ -279,7 +302,7 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
 
       if ((e.ctrlKey || e.metaKey) && key === "k") {
         e.preventDefault();
-        catalogSearchRef.current?.focus();
+        focusCatalogSearch();
         return;
       }
 
@@ -310,18 +333,55 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
         return;
       }
 
+      if (e.key === "Enter" && !isTyping && document.activeElement !== customPriceRef.current && document.activeElement !== customQtyRef.current) {
+        e.preventDefault();
+        focusCatalogSearch();
+        return;
+      }
+
       if (e.key === "Enter" && document.activeElement === catalogSearchRef.current) {
         e.preventDefault();
         if (!canCreateOrder) return;
 
         if (isCustomFallbackMode) {
-          addManualFallbackToCart();
+          focusCustomPrice();
           return;
         }
 
         if (selectedProduct?.variants?.length > 0) {
           addVariantToCart(selectedProduct, selectedProduct.variants[0]);
         }
+        return;
+      }
+
+      if (e.key === "Tab" && document.activeElement === catalogSearchRef.current && isCustomFallbackMode) {
+        e.preventDefault();
+        if (!canCreateOrder) return;
+        focusCustomPrice();
+        return;
+      }
+
+      if (e.key === "Tab" && document.activeElement === customPriceRef.current) {
+        e.preventDefault();
+        focusCustomQty();
+        return;
+      }
+
+      if (e.key === "Tab" && document.activeElement === customQtyRef.current) {
+        e.preventDefault();
+        addManualFallbackToCart();
+        return;
+      }
+
+      if (e.key === "Enter" && document.activeElement === customPriceRef.current) {
+        e.preventDefault();
+        focusCustomQty();
+        return;
+      }
+
+      if (e.key === "Enter" && document.activeElement === customQtyRef.current) {
+        e.preventDefault();
+        addManualFallbackToCart();
         return;
       }
 
@@ -389,6 +449,7 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
             onChange={(e) => {
               setCatalogSearch(e.target.value);
             }}
+            autoFocus
             disabled={catalogLoading}
           />
           <div className="category-pills">
@@ -447,6 +508,7 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
                 <div className="custom-order-form">
                   <label htmlFor="customPrice">Harga Custom</label>
                   <input
+                    ref={customPriceRef}
                     id="customPrice"
                     type="number"
                     min="0"
@@ -454,16 +516,29 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
                     placeholder="Contoh: 15000"
                     value={manualPrice}
                     onChange={(e) => setManualPrice(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === "Tab") {
+                        e.preventDefault();
+                        focusCustomQty();
+                      }
+                    }}
                   />
 
                   <label htmlFor="customQty">Qty</label>
                   <input
+                    ref={customQtyRef}
                     id="customQty"
                     type="number"
                     min="1"
                     placeholder="1"
                     value={manualQty}
                     onChange={(e) => setManualQty(Math.max(1, Number(e.target.value) || 1))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === "Tab") {
+                        e.preventDefault();
+                        addManualFallbackToCart();
+                      }
+                    }}
                   />
 
                   <button
