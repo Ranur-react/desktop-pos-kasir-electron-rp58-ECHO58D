@@ -672,6 +672,70 @@ th, td { text-align: left; border-bottom: 1px solid #e6ecf5; padding: 8px 7px; f
   font-weight: 600;
 }
 
+/* ── Account Auth ── */
+.auth-panel {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.auth-panel h2 {
+  margin-bottom: 6px;
+}
+
+.account-create-form,
+.account-login-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.auth-user-panel {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 14px;
+  align-items: start;
+  padding: 14px 16px;
+}
+
+.auth-user-panel h3 {
+  margin-bottom: 4px;
+  font-size: 1rem;
+}
+
+.auth-user-actions {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.self-password-form {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 12px;
+  align-items: end;
+  border-top: 1px solid #e6ecf5;
+  padding-top: 12px;
+  margin-top: 4px;
+}
+
+.self-password-form .btn-save {
+  margin: 0;
+  padding: 9px 18px;
+  width: auto;
+}
+
+/* ── Account Settings Table ── */
+.account-panel .table-wrap {
+  margin-top: 16px;
+}
+
+.account-role-select {
+  padding: 5px 8px;
+  font-size: 0.86rem;
+}
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .summary-grid, .summary-grid-5 { grid-template-columns: 1fr 1fr; }
@@ -686,9 +750,15 @@ th, td { text-align: left; border-bottom: 1px solid #e6ecf5; padding: 8px 7px; f
   .catalog-header-row { flex-direction: column; align-items: flex-start; }
   .variant-row { flex-direction: column; align-items: flex-start; }
   .custom-order-add-btn { width: 100%; }
-  
+
   /* Database responsive */
   .form-row { grid-template-columns: 1fr; }
   .database-actions-row { flex-direction: column; }
   .database-actions-row .btn { width: 100%; min-width: auto; }
+
+  /* Auth responsive */
+  .auth-user-panel { grid-template-columns: 1fr; }
+  .auth-user-actions { justify-content: flex-end; }
+  .self-password-form { grid-template-columns: 1fr; }
+  .self-password-form .btn-save { width: 100%; }
 }

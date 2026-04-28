@@ -28,5 +28,15 @@ contextBridge.exposeInMainWorld("posApi", {
 
   // Printer settings
   listPrinters: () => ipcRenderer.invoke("printer:list"),
-  setDefaultPrinter: (payload) => ipcRenderer.invoke("printer:set-default", payload)
+  setDefaultPrinter: (payload) => ipcRenderer.invoke("printer:set-default", payload),
+
+  // Auth + Account Management
+  getAuthState: () => ipcRenderer.invoke("auth:get-state"),
+  setupInitialAccount: (payload) => ipcRenderer.invoke("auth:setup-initial", payload),
+  login: (payload) => ipcRenderer.invoke("auth:login", payload),
+  logout: () => ipcRenderer.invoke("auth:logout"),
+  listAccounts: () => ipcRenderer.invoke("account:list"),
+  createAccount: (payload) => ipcRenderer.invoke("account:create", payload),
+  changeAccountRole: (payload) => ipcRenderer.invoke("account:change-role", payload),
+  changeAccountPassword: (payload) => ipcRenderer.invoke("account:change-password", payload)
 });

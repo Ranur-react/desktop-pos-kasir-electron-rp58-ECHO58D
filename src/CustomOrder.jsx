@@ -20,7 +20,7 @@ function formatDate(value) {
 const CART_PAGE_SIZE = 10;
 const ORDER_PAGE_SIZE = 8;
 
-export default function CustomOrder({ orders, summary, onRefresh }) {
+export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder = true, canRetur = true }) {
   const [catalog, setCatalog] = useState({
     products: [],
     categories: [],
@@ -138,6 +138,11 @@ export default function CustomOrder({ orders, summary, onRefresh }) {
   const pagedOrders = filteredOrders.slice(orderPage * ORDER_PAGE_SIZE, (orderPage + 1) * ORDER_PAGE_SIZE);
 
   function addVariantToCart(product, variant) {
+    if (!canCreateOrder) {
+      setStatus("Akun ini tidak memiliki akses membuat order.");
+      return;
+    }
+
     setCart((prev) => [
       ...prev,
       {
@@ -154,6 +159,11 @@ export default function CustomOrder({ orders, summary, onRefresh }) {
   }
 
   function addManualFallbackToCart() {
+    if (!canCreateOrder) {
+      setStatus("Akun ini tidak memiliki akses membuat order.");
+      return;
+    }
+
     const name = catalogSearch.trim();
     const p = Number(manualPrice);
     const q = Number(manualQty);
@@ -203,6 +213,11 @@ export default function CustomOrder({ orders, summary, onRefresh }) {
   }
 
   async function handlePaymentDone(method, cashGiven, qrisMeta = null) {
+    if (!canCreateOrder) {
+      setStatus("Akun ini tidak memiliki akses membuat order.");
+      return;
+    }
+
     try {
       setLoading(true);
       setStatus("Memproses pembayaran...");
@@ -234,6 +249,11 @@ export default function CustomOrder({ orders, summary, onRefresh }) {
   }
 
   async function handleRetur(orderId, lineId, reason) {
+    if (!canRetur) {
+      setStatus("Akun ini tidak memiliki akses retur order.");
+      return;
+    }
+
     try {
       setLoading(true);
       setStatus("Memproses retur...");
@@ -349,7 +369,11 @@ export default function CustomOrder({ orders, summary, onRefresh }) {
                     onChange={(e) => setManualQty(Math.max(1, Number(e.target.value) || 1))}
                   />
 
-                  <button className="btn btn-save custom-order-add-btn" onClick={addManualFallbackToCart}>
+                  <button
+                    className="btn btn-save custom-order-add-btn"
+                    onClick={addManualFallbackToCart}
+                    disabled={!canCreateOrder}
+                  >
                     + Tambah ke Keranjang
                   </button>
                 </div>
@@ -377,7 +401,7 @@ export default function CustomOrder({ orders, summary, onRefresh }) {
                         <button
                           className="btn btn-save variant-add-btn"
                           onClick={() => addVariantToCart(selectedProduct, variant)}
-                          disabled={loading}
+                          disabled={loading || !canCreateOrder}
                         >
                           + Keranjang
                         </button>
@@ -474,7 +498,11 @@ export default function CustomOrder({ orders, summary, onRefresh }) {
           <div className="cart-total">
             Total: <strong>{formatRupiah(cartTotal)}</strong>
           </div>
-          <button className="btn btn-bayar" disabled={loading || cart.length === 0} onClick={() => setShowPayment(true)}>
+          <button
+            className="btn btn-bayar"
+            disabled={loading || cart.length === 0 || !canCreateOrder}
+            onClick={() => setShowPayment(true)}
+          >
             Bayar
           </button>
         </div>
@@ -610,6 +638,7 @@ export default function CustomOrder({ orders, summary, onRefresh }) {
                                             e.stopPropagation();
                                             setReturTarget({ order: ord, line: ln });
                                           }}
+                                          disabled={!canRetur}
                                         >
                                           Retur
                                         </button>
@@ -659,7 +688,7 @@ export default function CustomOrder({ orders, summary, onRefresh }) {
         )}
       </section>
 
-      {showPayment && (
+      {showPayment && canCreateOrder && (
         <PaymentModal
           total={cartTotal}
           loading={loading}
@@ -668,7 +697,7 @@ export default function CustomOrder({ orders, summary, onRefresh }) {
         />
       )}
 
-      {returTarget && (
+      {returTarget && canRetur && (
         <ReturModal
           order={returTarget.order}
           line={returTarget.line}

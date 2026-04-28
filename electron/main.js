@@ -31,6 +31,29 @@ const {
 } = require("./services/dokuQris");
 const { readCatalogFromAssets } = require("./services/catalogCsv");
 const db = require("./services/dbConnection");
+const accountAuth = require("./services/accountAuth");
+
+let activeSessionUserId = null;
+
+function getSessionUser() {
+  if (!activeSessionUserId) return null;
+  return accountAuth.getAccountById(app, activeSessionUserId);
+}
+
+function ensurePermission(permission) {
+  if (!accountAuth.isAuthEnabled(app)) {
+    return;
+  }
+
+  const sessionUser = getSessionUser();
+  if (!sessionUser) {
+    throw new Error("Silakan login terlebih dahulu.");
+  }
+
+  if (!accountAuth.hasPermission(sessionUser, permission)) {
+    throw new Error("Akses ditolak. Role akun tidak memiliki izin untuk fitur ini.");
+  }
+}
 
 function createWindow() {
   const windowIcon = app.isPackaged
@@ -60,16 +83,17 @@ function createWindow() {
 async function initializeDatabase() {
   try {
     const config = db.loadConfigFromFile(app);
-    if (config && config.host && config.user && config.database) {
-      const result = await db.initializeConnection(app, config);
-      if (result.success) {
-        console.log("Database connected successfully");
-      } else {
-        console.warn("Failed to initialize database:", result.error);
-      }
+    if (!config || !config.host || !config.user || !config.database) return;
+
+    const result = await db.initializeConnection(app, config);
+    if (result.success) {
+      console.log("[POS] Database MySQL terhubung.");
+    } else {
+      console.warn("[POS] Koneksi database dilewati (MySQL tidak aktif atau config salah):", result.error);
     }
   } catch (err) {
-    console.error("Error initializing database:", err);
+    // Tidak crash — MySQL bersifat opsional, JSON tetap jadi database utama
+    console.warn("[POS] Koneksi database dilewati:", err.code || err.message);
   }
 }
 
@@ -93,6 +117,8 @@ app.on("window-all-closed", () => {
 });
 
 ipcMain.handle("pos:get-bootstrap", async () => {
+  ensurePermission("view_kasir");
+
   const transactions = await getTodayTransactions(app);
   const summary = await getTodaySummary(app);
   const printer = getPrinterConfig();
@@ -105,6 +131,8 @@ ipcMain.handle("pos:get-bootstrap", async () => {
 });
 
 ipcMain.handle("pos:add-transaction", async (_, payload) => {
+  ensurePermission("create_transaction");
+
   const { type, nominal, description, autoPrint = true } = payload || {};
 
   if (!["in", "out"].includes(type)) {
@@ -151,6 +179,8 @@ ipcMain.handle("pos:add-transaction", async (_, payload) => {
 });
 
 ipcMain.handle("pos:print-last", async () => {
+  ensurePermission("print_receipt");
+
   const latest = await getLatestTransaction(app);
   if (!latest) {
     throw new Error("Belum ada transaksi hari ini untuk dicetak.");
@@ -165,6 +195,8 @@ ipcMain.handle("pos:print-last", async () => {
 });
 
 ipcMain.handle("pos:open-drawer", async () => {
+  ensurePermission("open_drawer");
+
   await openCashDrawer();
   return {
     success: true,
@@ -175,6 +207,8 @@ ipcMain.handle("pos:open-drawer", async () => {
 // ── Custom Order IPC ──
 
 ipcMain.handle("order:get-today", async () => {
+  ensurePermission("view_order");
+
   return {
     orders: await getTodayOrders(app),
     summary: await getTodayOrdersSummary(app)
@@ -182,6 +216,8 @@ ipcMain.handle("order:get-today", async () => {
 });
 
 ipcMain.handle("order:create", async (_, payload) => {
+  ensurePermission("create_order");
+
   const { items, paymentMethod, cashGiven, qrisMeta } = payload || {};
 
   if (!Array.isArray(items) || items.length === 0) {
@@ -229,10 +265,13 @@ ipcMain.handle("order:create", async (_, payload) => {
 });
 
 ipcMain.handle("qris:image", async () => {
+  ensurePermission("create_order");
   return getQrisImageDataUrl();
 });
 
 ipcMain.handle("qris:print", async (_, payload) => {
+  ensurePermission("create_order");
+
   const { amount } = payload || {};
   const amountNumber = Number(amount);
   if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
@@ -243,6 +282,8 @@ ipcMain.handle("qris:print", async (_, payload) => {
 });
 
 ipcMain.handle("order:retur", async (_, payload) => {
+  ensurePermission("retur_order");
+
   const { orderId, lineId, reason } = payload || {};
   const order = returOrderItem(app, { orderId, lineId, reason });
   return {
@@ -253,22 +294,28 @@ ipcMain.handle("order:retur", async (_, payload) => {
 });
 
 ipcMain.handle("order:get-by-id", async (_, orderId) => {
+  ensurePermission("view_order");
+
   const order = await getOrderById(app, orderId);
   if (!order) throw new Error("Order tidak ditemukan.");
   return order;
 });
 
 ipcMain.handle("catalog:get", async () => {
+  ensurePermission("view_order");
   return readCatalogFromAssets(app, { forceReload: false });
 });
 
 ipcMain.handle("catalog:reload", async () => {
+  ensurePermission("view_order");
   return readCatalogFromAssets(app, { forceReload: true });
 });
 
 // ── Database Configuration IPC ──
 
 ipcMain.handle("db:get-config", async () => {
+  ensurePermission("view_database");
+
   const config = db.loadConfigFromFile(app);
   return {
     config,
@@ -277,10 +324,13 @@ ipcMain.handle("db:get-config", async () => {
 });
 
 ipcMain.handle("db:test-connection", async (_, config) => {
+  ensurePermission("manage_database");
   return db.testConnection(config);
 });
 
 ipcMain.handle("db:save-config", async (_, config) => {
+  ensurePermission("manage_database");
+
   try {
     // Save config to file
     db.saveConfigToFile(app, config);
@@ -309,6 +359,8 @@ ipcMain.handle("db:save-config", async (_, config) => {
 });
 
 ipcMain.handle("db:clear-config", async () => {
+  ensurePermission("manage_database");
+
   try {
     await db.closeConnection();
     db.deleteConfigFile(app);
@@ -319,6 +371,8 @@ ipcMain.handle("db:clear-config", async () => {
 });
 
 ipcMain.handle("printer:list", async () => {
+  ensurePermission("view_printer");
+
   return {
     current: getPrinterConfig(),
     printers: listAvailablePrinters()
@@ -326,11 +380,108 @@ ipcMain.handle("printer:list", async () => {
 });
 
 ipcMain.handle("printer:set-default", async (_, payload) => {
+  ensurePermission("manage_printer");
+
   const printerInterface = payload?.printerInterface;
   const current = setDefaultPrinterInterface(printerInterface);
   return {
     success: true,
     message: "Default printer berhasil disimpan.",
     current
+  };
+});
+
+// ── Account Auth IPC ──
+
+ipcMain.handle("auth:get-state", async () => {
+  return accountAuth.buildAuthState(app, getSessionUser());
+});
+
+ipcMain.handle("auth:setup-initial", async (_, payload) => {
+  const account = accountAuth.setupInitialAccount(app, payload);
+  activeSessionUserId = account.id;
+
+  return {
+    success: true,
+    message: "Akun awal berhasil dibuat.",
+    state: accountAuth.buildAuthState(app, getSessionUser())
+  };
+});
+
+ipcMain.handle("auth:login", async (_, payload) => {
+  const account = accountAuth.authenticate(app, payload);
+  activeSessionUserId = account.id;
+
+  return {
+    success: true,
+    message: "Login berhasil.",
+    state: accountAuth.buildAuthState(app, getSessionUser())
+  };
+});
+
+ipcMain.handle("auth:logout", async () => {
+  activeSessionUserId = null;
+  return {
+    success: true,
+    message: "Logout berhasil.",
+    state: accountAuth.buildAuthState(app, null)
+  };
+});
+
+ipcMain.handle("account:list", async () => {
+  ensurePermission("manage_accounts");
+  return {
+    accounts: accountAuth.listAccounts(app),
+    roles: accountAuth.listRoleOptions()
+  };
+});
+
+ipcMain.handle("account:create", async (_, payload) => {
+  ensurePermission("manage_accounts");
+
+  const account = accountAuth.createAccount(app, payload);
+  return {
+    success: true,
+    message: "Akun berhasil ditambahkan.",
+    account,
+    accounts: accountAuth.listAccounts(app)
+  };
+});
+
+ipcMain.handle("account:change-role", async (_, payload) => {
+  ensurePermission("manage_accounts");
+
+  const account = accountAuth.changeRole(app, {
+    targetAccountId: payload?.accountId,
+    role: payload?.role
+  });
+
+  return {
+    success: true,
+    message: "Role akun berhasil diubah.",
+    account,
+    accounts: accountAuth.listAccounts(app),
+    state: accountAuth.buildAuthState(app, getSessionUser())
+  };
+});
+
+ipcMain.handle("account:change-password", async (_, payload) => {
+  const actor = getSessionUser();
+  if (!actor) {
+    throw new Error("Silakan login terlebih dahulu.");
+  }
+
+  const targetAccountId = payload?.accountId || actor.id;
+  const account = accountAuth.changePassword(app, {
+    actorAccount: actor,
+    targetAccountId,
+    currentPassword: payload?.currentPassword,
+    newPassword: payload?.newPassword
+  });
+
+  return {
+    success: true,
+    message: "Password berhasil diperbarui.",
+    account
   };
 });
