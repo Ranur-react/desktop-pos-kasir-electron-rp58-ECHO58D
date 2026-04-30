@@ -1,0 +1,351 @@
+<!-- 
+  CHANGELOG PAGE - Barangmudo POS
+  Tempel konten ini ke dalam Shopify Page (Content section)
+  Gunakan mode HTML di editor Shopify
+-->
+
+<style>
+  .cl-wrap {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    max-width: 780px;
+    margin: 0 auto;
+    color: #1a1a2e;
+    line-height: 1.7;
+  }
+  .cl-hero {
+    background: linear-gradient(135deg, #0f3460, #16213e);
+    color: #fff;
+    border-radius: 16px;
+    padding: 40px 36px 32px;
+    margin-bottom: 40px;
+    text-align: center;
+  }
+  .cl-hero h1 {
+    font-size: 2rem;
+    margin: 0 0 10px;
+    letter-spacing: -0.5px;
+  }
+  .cl-hero p {
+    font-size: 1.05rem;
+    opacity: 0.85;
+    margin: 0;
+  }
+  .cl-version-card {
+    border: 1.5px solid #e8eaf0;
+    border-radius: 14px;
+    padding: 28px 30px;
+    margin-bottom: 28px;
+    position: relative;
+    background: #fff;
+    box-shadow: 0 2px 12px rgba(15,52,96,0.06);
+    transition: box-shadow 0.2s;
+  }
+  .cl-version-card:hover {
+    box-shadow: 0 6px 24px rgba(15,52,96,0.12);
+  }
+  .cl-version-card.latest {
+    border-color: #0f3460;
+    background: #f4f8ff;
+  }
+  .cl-badge-latest {
+    position: absolute;
+    top: -12px;
+    left: 24px;
+    background: #0f3460;
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 3px 12px;
+    border-radius: 20px;
+    text-transform: uppercase;
+  }
+  .cl-version-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+  }
+  .cl-version-num {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: #0f3460;
+  }
+  .cl-version-date {
+    font-size: 0.82rem;
+    color: #888;
+    background: #f0f2f8;
+    padding: 3px 10px;
+    border-radius: 20px;
+  }
+  .cl-version-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #444;
+    margin-left: auto;
+  }
+  .cl-feat-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 22px;
+  }
+  .cl-feat-list li {
+    padding: 6px 0 6px 28px;
+    position: relative;
+    font-size: 0.95rem;
+    color: #333;
+    border-bottom: 1px dashed #e8eaf0;
+  }
+  .cl-feat-list li:last-child {
+    border-bottom: none;
+  }
+  .cl-feat-list li::before {
+    content: attr(data-icon);
+    position: absolute;
+    left: 0;
+    font-size: 1rem;
+  }
+  .cl-highlight {
+    background: #e8f0fe;
+    border-left: 4px solid #0f3460;
+    border-radius: 0 8px 8px 0;
+    padding: 12px 16px;
+    font-size: 0.9rem;
+    color: #0f3460;
+    margin-bottom: 20px;
+    font-style: italic;
+  }
+  .cl-download-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #0f3460;
+    color: #fff !important;
+    text-decoration: none !important;
+    padding: 12px 26px;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    transition: background 0.2s, transform 0.15s;
+  }
+  .cl-download-btn:hover {
+    background: #16213e;
+    transform: translateY(-1px);
+    color: #fff !important;
+  }
+  .cl-download-btn svg {
+    width: 18px;
+    height: 18px;
+    fill: #fff;
+    flex-shrink: 0;
+  }
+  .cl-note {
+    font-size: 0.78rem;
+    color: #999;
+    margin-top: 8px;
+    display: block;
+  }
+  .cl-cta-box {
+    background: linear-gradient(135deg, #0f3460, #1a5276);
+    color: #fff;
+    border-radius: 14px;
+    padding: 32px 30px;
+    text-align: center;
+    margin-top: 40px;
+  }
+  .cl-cta-box h3 {
+    font-size: 1.25rem;
+    margin: 0 0 8px;
+  }
+  .cl-cta-box p {
+    opacity: 0.85;
+    font-size: 0.93rem;
+    margin: 0 0 20px;
+  }
+  .cl-cta-btn {
+    display: inline-block;
+    background: #fff;
+    color: #0f3460 !important;
+    text-decoration: none !important;
+    padding: 12px 28px;
+    border-radius: 10px;
+    font-weight: 800;
+    font-size: 0.95rem;
+    transition: opacity 0.2s;
+  }
+  .cl-cta-btn:hover {
+    opacity: 0.9;
+  }
+  .cl-section-divider {
+    border: none;
+    border-top: 2px dashed #e0e4ef;
+    margin: 36px 0;
+  }
+  @media (max-width: 600px) {
+    .cl-hero { padding: 28px 20px 24px; }
+    .cl-version-card { padding: 22px 18px; }
+    .cl-version-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .cl-version-title { margin-left: 0; }
+  }
+</style>
+
+<div class="cl-wrap">
+
+  <!-- HERO -->
+  <div class="cl-hero">
+    <h1>📦 Barangmudo POS — Rilis &amp; Pembaruan</h1>
+    <p>Hei! Kami terus memperbarui aplikasi kasir ini biar makin nyaman dipakai sehari-hari.<br>
+    Yuk, lihat apa saja yang sudah kami tambahkan di setiap versi 👇</p>
+  </div>
+
+  <!-- VERSION 3.0 -->
+  <div class="cl-version-card latest">
+    <span class="cl-badge-latest">✨ Terbaru</span>
+    <div class="cl-version-header">
+      <span class="cl-version-num">Versi 3.0</span>
+      <span class="cl-version-date">April 2025</span>
+      <span class="cl-version-title">Versi paling lengkap sejauh ini</span>
+    </div>
+
+    <div class="cl-highlight">
+      "Kami dengar masukan kalian — sekarang semua bisa dikerjain tanpa harus pegang mouse!"
+    </div>
+
+    <ul class="cl-feat-list">
+      <li data-icon="🔐">
+        <strong>Sistem Login &amp; Hak Akses</strong> — Admin dan Kasir punya akses yang berbeda. 
+        Kasir cukup fokus ke transaksi, admin yang atur settings-nya.
+      </li>
+      <li data-icon="⌨️">
+        <strong>Operasi Full Keyboard</strong> — Dari input produk, harga, qty, sampai bayar — semua 
+        bisa lewat <code>Tab</code>, <code>Enter</code>, dan shortcut. Nggak perlu klik klik lagi!
+      </li>
+      <li data-icon="🎹">
+        <strong>Shortcut Cepat Kasir</strong> — <code>Ctrl+I</code> uang masuk, <code>Ctrl+U</code> keluar, 
+        <code>Ctrl+P</code> cetak, <code>F2</code> nominal, <code>F3</code> keterangan.
+      </li>
+      <li data-icon="🗂️">
+        <strong>Tampilan Dashboard Baru</strong> — Navigasi tab lebih rapi, profil user di pojok kanan atas, 
+        ubah password bisa langsung dari menu tanpa keluar halaman.
+      </li>
+      <li data-icon="🛒">
+        <strong>Mode Custom Order</strong> — Produk nggak ada di katalog? Ketik nama, harga, qty — 
+        langsung masuk keranjang. Alur <code>Tab → Tab → Enter</code> selesai dalam hitungan detik.
+      </li>
+      <li data-icon="💳">
+        <strong>Shortcut Pembayaran</strong> — Di layar bayar: tekan <code>1</code> untuk Tunai, 
+        <code>2</code> untuk QRIS, <code>Enter</code> konfirmasi, <code>Esc</code> batal.
+      </li>
+      <li data-icon="🔌">
+        <strong>Koneksi Database Opsional</strong> — App tetap jalan meski tanpa MySQL. 
+        Data transaksi tersimpan lokal di JSON, MySQL hanya untuk sinkronisasi tambahan.
+      </li>
+    </ul>
+
+    <a class="cl-download-btn" href="https://drive.google.com/file/d/1_haQg88NosaJV110jLBrLncAlodwJF_C/view" target="_blank" rel="noopener noreferrer">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 16l-6-6h4V4h4v6h4l-6 6zm-7 2h14v2H5v-2z"/></svg>
+      Download Versi 3.0
+    </a>
+    <span class="cl-note">File .exe installer untuk Windows 10/11 &bull; Ukuran ~90 MB</span>
+  </div>
+
+  <hr class="cl-section-divider">
+
+  <!-- VERSION 2.0 -->
+  <div class="cl-version-card">
+    <div class="cl-version-header">
+      <span class="cl-version-num">Versi 2.0</span>
+      <span class="cl-version-date">Februari 2025</span>
+      <span class="cl-version-title">Lebih pintar, lebih cepat</span>
+    </div>
+
+    <div class="cl-highlight">
+      "Versi ini kami fokuskan ke kecepatan transaksi dan kemudahan input produk dari Shopify."
+    </div>
+
+    <ul class="cl-feat-list">
+      <li data-icon="📋">
+        <strong>Import Katalog dari Shopify CSV</strong> — Upload file ekspor produk Shopify, 
+        langsung muncul di katalog kasir. Nggak perlu input ulang satu-satu 🎉
+      </li>
+      <li data-icon="🔍">
+        <strong>Pencarian Produk Real-time</strong> — Ketik beberapa huruf, produk langsung muncul. 
+        Makin banyak produk, makin berguna fitur ini.
+      </li>
+      <li data-icon="🧾">
+        <strong>Struk Termal</strong> — Cetak struk langsung ke printer thermal 58mm/80mm. 
+        Format rapi, bisa diatur nama toko dan footer-nya.
+      </li>
+      <li data-icon="📊">
+        <strong>Riwayat Transaksi Harian</strong> — Lihat semua transaksi hari ini, lengkap dengan 
+        total, metode bayar, dan tombol cetak ulang.
+      </li>
+      <li data-icon="💰">
+        <strong>Rekap Kas</strong> — Catat uang masuk dan keluar kas. Cocok buat pembukuan harian 
+        yang simpel tanpa ribet.
+      </li>
+      <li data-icon="🖨️">
+        <strong>Pengaturan Printer</strong> — Pilih printer dari daftar yang terdeteksi, 
+        test cetak bisa langsung dari settings.
+      </li>
+    </ul>
+
+    <a class="cl-download-btn" href="https://drive.google.com/file/d/1VFF6aKLa31BQqutdBbBge81WX6VawKzK/view" target="_blank" rel="noopener noreferrer">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 16l-6-6h4V4h4v6h4l-6 6zm-7 2h14v2H5v-2z"/></svg>
+      Download Versi 2.0
+    </a>
+    <span class="cl-note">File .exe installer untuk Windows 10/11 &bull; Ukuran ~85 MB</span>
+  </div>
+
+  <hr class="cl-section-divider">
+
+  <!-- VERSION 1.0 -->
+  <div class="cl-version-card">
+    <div class="cl-version-header">
+      <span class="cl-version-num">Versi 1.0</span>
+      <span class="cl-version-date">Oktober 2024</span>
+      <span class="cl-version-title">Awal mula semuanya</span>
+    </div>
+
+    <div class="cl-highlight">
+      "Versi pertama yang sudah bisa dipakai untuk transaksi sehari-hari di toko offline."
+    </div>
+
+    <ul class="cl-feat-list">
+      <li data-icon="🏪">
+        <strong>Kasir Dasar</strong> — Tambah item ke keranjang, hitung total, proses pembayaran. 
+        Simpel tapi fungsional untuk toko kecil hingga menengah.
+      </li>
+      <li data-icon="💵">
+        <strong>Pembayaran Tunai &amp; QRIS</strong> — Dua metode bayar paling umum di Indonesia 
+        sudah tersedia dari versi pertama.
+      </li>
+      <li data-icon="📁">
+        <strong>Penyimpanan Lokal</strong> — Semua data transaksi disimpan di komputer kamu, 
+        bukan di cloud. Aman, privat, bisa jalan offline.
+      </li>
+      <li data-icon="🖥️">
+        <strong>Aplikasi Desktop Windows</strong> — Dibangun dengan teknologi Electron, 
+        berjalan ringan di Windows 10 ke atas.
+      </li>
+    </ul>
+
+    <a class="cl-download-btn" href="https://drive.google.com/file/d/17ezNVEC9uVuVsDKNV_gN3MBbdynys1__/view" target="_blank" rel="noopener noreferrer">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 16l-6-6h4V4h4v6h4l-6 6zm-7 2h14v2H5v-2z"/></svg>
+      Download Versi 1.0
+    </a>
+    <span class="cl-note">File .exe installer untuk Windows 10/11 &bull; Ukuran ~80 MB</span>
+  </div>
+
+  <!-- CTA BOX -->
+  <div class="cl-cta-box">
+    <h3>Ada pertanyaan atau masukan? 💬</h3>
+    <p>Kami senang banget dapet feedback dari pengguna langsung. Kalau ada fitur yang pengen ditambahkan 
+    atau ada bug yang ditemuin, langsung aja hubungi kami ya!</p>
+    <a class="cl-cta-btn" href="/pages/contact">Hubungi Kami</a>
+  </div>
+
+</div>
+<!-- end .cl-wrap -->
