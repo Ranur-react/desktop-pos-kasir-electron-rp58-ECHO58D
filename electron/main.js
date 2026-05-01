@@ -1,5 +1,5 @@
 const path = require("path");
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const {
   getTodayTransactions,
   addTransaction,
@@ -32,6 +32,7 @@ const {
 const { readCatalogFromAssets } = require("./services/catalogCsv");
 const db = require("./services/dbConnection");
 const accountAuth = require("./services/accountAuth");
+const migration = require("./services/migration");
 
 let activeSessionUserId = null;
 
@@ -96,12 +97,109 @@ async function initializeDatabase() {
     console.warn("[POS] Koneksi database dilewati:", err.code || err.message);
   }
 }
+async function runStartupSequence() {
+  console.log("[POS] === Startup Sequence Begin ===");
+  
+  // 1. Run migrations
+  console.log("[POS] Step 1: Running data migrations...");
+  const migrationResult = migration.runMigrations(app);
+  if (!migrationResult.success) {
+    console.error("[POS] Migration failed:", migrationResult.error);
+    const choice = dialog.showMessageBoxSync({
+      type: "error",
+      title: "Migration Error",
+      message: "Gagal menjalankan pembaruan data aplikasi.",
+      detail: migrationResult.error || "Unknown error",
+      buttons: ["Keluar", "Coba Lagi"]
+    });
+    if (choice === 0) {
+      app.quit();
+      return false;
+    }
+    // Retry
+    return await runStartupSequence();
+  }
+  if (migrationResult.migrated.length > 0) {
+    console.log(`[POS] Migrated to versions: ${migrationResult.migrated.join(" -> ")}`);
+  }
+  
+  // 2. Create backup (pre-startup)
+  console.log("[POS] Step 2: Creating startup backup...");
+  const backupResult = migration.createBackup(app, "startup");
+  if (backupResult.success) {
+    console.log(`[POS] Backup created: ${backupResult.backupPath}`);
+  } else {
+    console.warn(`[POS] Backup skipped: ${backupResult.error}`);
+  }
+  
+  // 3. Initialize database
+  console.log("[POS] Step 3: Initializing database...");
+  await initializeDatabase();
+  
+  // 4. Validate critical data
+  console.log("[POS] Step 4: Validating critical data...");
+  const validationResult = validateCriticalData();
+  if (!validationResult.valid) {
+    console.warn("[POS] Validation warnings:", validationResult.warnings);
+    if (validationResult.critical) {
+      const choice = dialog.showMessageBoxSync({
+        type: "warning",
+        title: "Data Validation Failed",
+        message: "Ada masalah dengan data aplikasi.",
+        detail: validationResult.warnings.join("\n"),
+        buttons: ["Keluar", "Lanjutkan Anyway"]
+      });
+      if (choice === 0) {
+        app.quit();
+        return false;
+      }
+    }
+  }
+  
+  console.log("[POS] === Startup Sequence Complete ===");
+  return true;
+}
 
-app.whenReady().then(() => {
+function validateCriticalData() {
+  const warnings = [];
+  const critical = false;
+  
+  try {
+    // Check if accounts exist
+    const accounts = accountAuth.listAccounts(app);
+    if (!accounts || accounts.length === 0) {
+      warnings.push("Sistem akun belum diinisialisasi. Silakan setup akun admin.");
+    }
+    
+    // Check printer config
+    const printerConfig = getPrinterConfig();
+    if (!printerConfig) {
+      warnings.push("Konfigurasi printer belum tersimpan. Buka tab Printer untuk setup.");
+    }
+    
+    return {
+      valid: warnings.length === 0,
+      critical,
+      warnings
+    };
+  } catch (err) {
+    console.error("[Validation] Error:", err.message);
+    return {
+      valid: false,
+      critical: true,
+      warnings: ["Error saat validasi data: " + err.message]
+    };
+  }
+}
+app.whenReady().then(async () => {
+  // Run startup sequence first (migrations, backups, validation)
+  const startupOk = await runStartupSequence();
+  if (!startupOk) {
+    return; // Startup failed, app will quit
+  }
+  
+  // Create main window
   createWindow();
-
-  // Initialize database if configured
-  initializeDatabase();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -483,5 +581,73 @@ ipcMain.handle("account:change-password", async (_, payload) => {
     success: true,
     message: "Password berhasil diperbarui.",
     account
+  };
+});
+
+// ── Backup & Migration IPC ──
+
+ipcMain.handle("backup:create", async (_, reason = "manual") => {
+  ensurePermission("manage_database");
+  const result = migration.createBackup(app, reason);
+  return result;
+});
+
+ipcMain.handle("backup:list", async () => {
+  ensurePermission("manage_database");
+  
+  const userData = app.getPath("userData");
+  const backupDir = path.join(userData, "backups");
+  const fs = require("fs");
+  
+  try {
+    if (!fs.existsSync(backupDir)) {
+      return { success: true, backups: [] };
+    }
+    
+    const files = fs.readdirSync(backupDir)
+      .filter(f => f.startsWith("backup-") && f.endsWith(".json"))
+      .sort()
+      .reverse()
+      .map(f => ({
+        filename: f,
+        path: path.join(backupDir, f),
+        created: fs.statSync(path.join(backupDir, f)).mtime
+      }));
+    
+    return { success: true, backups: files };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle("backup:restore", async (_, backupPath) => {
+  ensurePermission("manage_database");
+  
+  if (!backupPath || typeof backupPath !== "string") {
+    return { success: false, error: "Invalid backup path" };
+  }
+  
+  // Create pre-restore backup first
+  const preRestoreBackup = migration.createBackup(app, "pre-restore");
+  if (!preRestoreBackup.success) {
+    return { success: false, error: "Failed to create pre-restore backup: " + preRestoreBackup.error };
+  }
+  
+  const result = migration.restoreBackup(app, backupPath);
+  if (result.success) {
+    return {
+      success: true,
+      message: `Restored ${result.restored} files. Pre-restore backup: ${preRestoreBackup.backupPath}`,
+      restored: result.restored
+    };
+  } else {
+    return { success: false, error: result.error };
+  }
+});
+
+ipcMain.handle("app:get-version", async () => {
+  return {
+    appVersion: app.getVersion(),
+    dataVersion: migration.getDataVersion(app)
   };
 });

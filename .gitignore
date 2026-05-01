@@ -6,4 +6,5 @@ dist
 *.pem
 *.zip
 pos-data/
+release.*/
 release/

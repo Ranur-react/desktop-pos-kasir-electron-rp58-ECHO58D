@@ -1,6 +1,6 @@
 {
   "name": "pos-electron-echo58d",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "POS desktop sederhana dengan Electron + React + printer thermal ESC/POS",
   "main": "electron/main.js",
   "author": "Barangmudo",

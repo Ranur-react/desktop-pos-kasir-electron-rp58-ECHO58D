@@ -38,5 +38,11 @@ contextBridge.exposeInMainWorld("posApi", {
   listAccounts: () => ipcRenderer.invoke("account:list"),
   createAccount: (payload) => ipcRenderer.invoke("account:create", payload),
   changeAccountRole: (payload) => ipcRenderer.invoke("account:change-role", payload),
-  changeAccountPassword: (payload) => ipcRenderer.invoke("account:change-password", payload)
+  changeAccountPassword: (payload) => ipcRenderer.invoke("account:change-password", payload),
+
+  // Backup & Migration (Admin/Database manager only)
+  createBackup: (reason) => ipcRenderer.invoke("backup:create", reason),
+  listBackups: () => ipcRenderer.invoke("backup:list"),
+  restoreBackup: (backupPath) => ipcRenderer.invoke("backup:restore", backupPath),
+  getVersion: () => ipcRenderer.invoke("app:get-version")
 });
