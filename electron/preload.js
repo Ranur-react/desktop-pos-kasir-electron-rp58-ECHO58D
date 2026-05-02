@@ -44,5 +44,16 @@ contextBridge.exposeInMainWorld("posApi", {
   createBackup: (reason) => ipcRenderer.invoke("backup:create", reason),
   listBackups: () => ipcRenderer.invoke("backup:list"),
   restoreBackup: (backupPath) => ipcRenderer.invoke("backup:restore", backupPath),
-  getVersion: () => ipcRenderer.invoke("app:get-version")
+  getVersion: () => ipcRenderer.invoke("app:get-version"),
+
+  // Store Settings
+  getStoreConfig: () => ipcRenderer.invoke("store:get-config"),
+  saveStoreConfig: (payload) => ipcRenderer.invoke("store:save-config", payload),
+  pickStoreImage: () => ipcRenderer.invoke("store:pick-image"),
+  pickAppIcon: () => ipcRenderer.invoke("store:pick-icon"),
+  setAppIcon: (iconPath) => ipcRenderer.invoke("store:set-app-icon", iconPath),
+  getDataPath: () => ipcRenderer.invoke("store:get-data-path"),
+  setDataPath: (newPath) => ipcRenderer.invoke("store:set-data-path", newPath),
+  pickDataFolder: () => ipcRenderer.invoke("store:pick-folder"),
+  previewQrisContent: (content) => ipcRenderer.invoke("qris:preview-content", content)
 });

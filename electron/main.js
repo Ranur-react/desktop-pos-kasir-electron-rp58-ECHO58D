@@ -15,7 +15,10 @@ const {
   getPrinterConfig,
   getQrisImageDataUrl,
   listAvailablePrinters,
-  setDefaultPrinterInterface
+  setDefaultPrinterInterface,
+  getRuntimeConfig,
+  getEnvPath,
+  setEnvKey
 } = require("./services/printer");
 const {
   getTodayOrders,
@@ -57,16 +60,28 @@ function ensurePermission(permission) {
 }
 
 function createWindow() {
-  const windowIcon = app.isPackaged
-    ? undefined
+  // Use custom app icon from .env if set, otherwise bundled default
+  const { nativeImage } = require("electron");
+  const fs = require("fs");
+  let resolvedIcon = app.isPackaged
+    ? path.join(process.resourcesPath, "build", "icon.ico")
     : path.join(app.getAppPath(), "build", "icon.ico");
+
+  try {
+    const savedIconPath = getRuntimeConfig && getRuntimeConfig()?.appIconPath;
+    if (savedIconPath && fs.existsSync(savedIconPath)) {
+      resolvedIcon = savedIconPath;
+    }
+  } catch {}
+
+  const windowIcon = nativeImage.createFromPath(resolvedIcon);
 
   const win = new BrowserWindow({
     width: 1100,
     height: 760,
     minWidth: 900,
     minHeight: 650,
-    icon: windowIcon,
+    icon: windowIcon.isEmpty() ? undefined : windowIcon,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -651,3 +666,127 @@ ipcMain.handle("app:get-version", async () => {
     dataVersion: migration.getDataVersion(app)
   };
 });
+
+// ── Store Settings IPC ──
+
+ipcMain.handle("store:get-config", async () => {
+  ensurePermission("manage_printer");
+  const fs = require("fs");
+  const cfg = getRuntimeConfig();
+  const envPath = getEnvPath();
+  return {
+    storeTitle: cfg.storeTitle,
+    storeSubtitle: cfg.storeSubtitle,
+    storeAddress: cfg.storeAddress,
+    storeWa: cfg.storeWa,
+    storeLogoPath: cfg.storeLogoPath,
+    printerCharWidth: cfg.printerCharWidth,
+    qrisStaticContent: cfg.qrisStaticContent,
+    envPath,
+    hasLogo: Boolean(cfg.storeLogoPath && fs.existsSync(cfg.storeLogoPath))
+  };
+});
+
+ipcMain.handle("store:save-config", async (_, payload) => {
+  ensurePermission("manage_printer");
+  const fieldMap = {
+    storeTitle: "STORE_TITLE",
+    storeSubtitle: "STORE_SUBTITLE",
+    storeAddress: "STORE_ADDRESS",
+    storeWa: "STORE_WA",
+    printerCharWidth: "PRINTER_CHAR_WIDTH",
+    qrisStaticContent: "QRIS_STATIC_CONTENT",
+    storeLogoPath: "STORE_LOGO_PATH"
+  };
+  for (const [field, envKey] of Object.entries(fieldMap)) {
+    if (payload && Object.prototype.hasOwnProperty.call(payload, field)) {
+      setEnvKey(envKey, String(payload[field] ?? ""));
+    }
+  }
+  return { success: true, envPath: getEnvPath() };
+});
+
+ipcMain.handle("store:pick-image", async () => {
+  ensurePermission("manage_printer");
+  const result = await dialog.showOpenDialog({
+    title: "Pilih Gambar Logo",
+    filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "bmp", "gif"] }],
+    properties: ["openFile"]
+  });
+  if (result.canceled || result.filePaths.length === 0) return { canceled: true };
+  return { canceled: false, filePath: result.filePaths[0] };
+});
+
+ipcMain.handle("store:pick-icon", async () => {
+  ensurePermission("manage_printer");
+  const result = await dialog.showOpenDialog({
+    title: "Pilih Icon Aplikasi (.ico atau .png)",
+    filters: [{ name: "Icons", extensions: ["ico", "png"] }],
+    properties: ["openFile"]
+  });
+  if (result.canceled || result.filePaths.length === 0) return { canceled: true };
+  return { canceled: false, filePath: result.filePaths[0] };
+});
+
+ipcMain.handle("store:set-app-icon", async (_, iconPath) => {
+  ensurePermission("manage_printer");
+  const fs = require("fs");
+  const { nativeImage } = require("electron");
+  if (!iconPath || !fs.existsSync(iconPath)) {
+    return { success: false, error: "File icon tidak ditemukan." };
+  }
+  try {
+    const img = nativeImage.createFromPath(iconPath);
+    const wins = BrowserWindow.getAllWindows();
+    for (const win of wins) win.setIcon(img);
+    setEnvKey("APP_ICON_PATH", iconPath);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle("store:get-data-path", async () => {
+  ensurePermission("manage_database");
+  const { resolveDataDir } = require("./services/dataPath");
+  return { dataPath: resolveDataDir(app) };
+});
+
+ipcMain.handle("store:set-data-path", async (_, newPath) => {
+  ensurePermission("manage_database");
+  if (!newPath || typeof newPath !== "string") {
+    return { success: false, error: "Path tidak valid." };
+  }
+  const { resetDataDir } = require("./services/dataPath");
+  setEnvKey("DATA_PATH", newPath);
+  resetDataDir();
+  return { success: true };
+});
+
+ipcMain.handle("store:pick-folder", async () => {
+  ensurePermission("manage_database");
+  const result = await dialog.showOpenDialog({
+    title: "Pilih Folder Data POS",
+    properties: ["openDirectory", "createDirectory"]
+  });
+  if (result.canceled || result.filePaths.length === 0) return { canceled: true };
+  return { canceled: false, folderPath: result.filePaths[0] };
+});
+
+ipcMain.handle("qris:preview-content", async (_, content) => {
+  if (!content || typeof content !== "string" || !content.trim()) {
+    return { imageDataUrl: "", error: "Konten QRIS kosong." };
+  }
+  const QRCode = require("qrcode");
+  try {
+    const dataUrl = await QRCode.toDataURL(content.trim(), {
+      errorCorrectionLevel: "M",
+      width: 256,
+      margin: 2
+    });
+    return { imageDataUrl: dataUrl };
+  } catch (err) {
+    return { imageDataUrl: "", error: err.message };
+  }
+});
+

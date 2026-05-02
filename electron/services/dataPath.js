@@ -11,13 +11,13 @@ let _dataDir = null;
 function resolveDataDir(app) {
   if (_dataDir) return _dataDir;
 
-  // 1. Determine app root and .env location (same logic as printer.js)
+  // 1. Determine app root and .env location
   const appRoot = app.isPackaged
     ? path.dirname(app.getPath("exe"))
     : path.resolve(__dirname, "..", "..");
   
-  const isInProgramFiles = appRoot.toLowerCase().includes("program files");
-  const envPath = isInProgramFiles
+  // Always use AppData for .env in packaged mode (writable & predictable)
+  const envPath = app.isPackaged
     ? path.join(app.getPath("userData"), ".env")
     : path.join(appRoot, ".env");
 
@@ -44,8 +44,8 @@ function resolveDataDir(app) {
     _dataDir = path.isAbsolute(envDataPath)
       ? envDataPath
       : path.resolve(appRoot, envDataPath);
-  } else if (isInProgramFiles) {
-    // If in Program Files, default to AppData
+  } else if (app.isPackaged) {
+    // Packaged: default to AppData (always writable)
     _dataDir = path.join(app.getPath("userData"), "pos-data");
   } else {
     // Dev mode: ./pos-data next to the application

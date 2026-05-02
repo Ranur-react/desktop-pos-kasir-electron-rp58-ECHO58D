@@ -13,15 +13,13 @@ function getAppRoot() {
 }
 
 function getEnvPath() {
-  const appRoot = getAppRoot();
-  
-  // Jika di Program Files (read-only), gunakan AppData
-  if (appRoot.toLowerCase().includes("program files")) {
+  const { app } = require("electron");
+  // In packaged mode, always use AppData (writable, predictable).
+  // In dev mode, use app root.
+  if (app.isPackaged) {
     return path.join(app.getPath("userData"), ".env");
   }
-  
-  // Dev mode atau folder lokal: tetap di app root
-  return path.join(appRoot, ".env");
+  return path.join(getAppRoot(), ".env");
 }
 
 function loadDotEnv() {
@@ -81,7 +79,8 @@ function getRuntimeConfig() {
     storeAddress: getConfigValue(dotEnv, "STORE_ADDRESS", ""),
     storeWa: getConfigValue(dotEnv, "STORE_WA", ""),
     storeLogoPath: resolveLogoPath(storeLogoPathRaw),
-    qrisStaticContent: getConfigValue(dotEnv, "QRIS_STATIC_CONTENT", "")
+    qrisStaticContent: getConfigValue(dotEnv, "QRIS_STATIC_CONTENT", ""),
+    appIconPath: getConfigValue(dotEnv, "APP_ICON_PATH", "")
   };
 }
 
@@ -410,5 +409,9 @@ module.exports = {
   getQrisImageDataUrl,
   listAvailablePrinters,
   setDefaultPrinterInterface,
-  printQrisSlip: printQrisStatic
+  printQrisSlip: printQrisStatic,
+  // Exposed for Store Settings UI
+  getRuntimeConfig,
+  getEnvPath,
+  setEnvKey
 };

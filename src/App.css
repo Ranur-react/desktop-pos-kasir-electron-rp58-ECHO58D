@@ -909,6 +909,207 @@ th, td { text-align: left; border-bottom: 1px solid #e6ecf5; padding: 8px 7px; f
   margin-top: 0;
 }
 
+/* ── Store Settings ── */
+.store-settings-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.store-settings-header h2 { margin-bottom: 6px; }
+
+.env-path-badge {
+  background: #f0f4ff;
+  border: 1px solid #d5deea;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 0.78rem;
+  color: #334155;
+  word-break: break-all;
+  font-family: monospace;
+}
+
+.store-settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-bottom: 2px solid #e8edf5;
+  padding-bottom: 10px;
+}
+
+.store-tab-btn {
+  border: 1px solid #d5deea;
+  background: #f8fbff;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: #334155;
+  transition: all 0.15s;
+}
+
+.store-tab-btn:hover { background: #eef2fb; }
+
+.store-tab-active {
+  background: #1d4ed8 !important;
+  color: #fff !important;
+  border-color: #1d4ed8 !important;
+}
+
+.store-section {
+  display: grid;
+  gap: 14px;
+}
+
+.store-section h3 {
+  font-size: 1rem;
+  color: #1e293b;
+  margin-bottom: 0;
+}
+
+.store-actions-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.store-divider {
+  border: none;
+  border-top: 1px dashed #d5deea;
+  margin: 0;
+}
+
+.logo-picker-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.path-input {
+  flex: 1;
+  padding: 9px 10px;
+  border: 1px solid #d5deea;
+  border-radius: 9px;
+  font-size: 0.9rem;
+  font-family: monospace;
+  background: #f8fbff;
+}
+
+.logo-preview-box {
+  border: 1px dashed #c7d5eb;
+  border-radius: 10px;
+  padding: 10px;
+  background: #f8fbff;
+  display: inline-block;
+}
+
+.logo-preview-img {
+  max-width: 200px;
+  max-height: 100px;
+  object-fit: contain;
+  display: block;
+}
+
+/* QRIS section */
+.qris-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #d5deea;
+  border-radius: 9px;
+  font-size: 0.88rem;
+  font-family: monospace;
+  resize: vertical;
+}
+
+.qris-preview-area {
+  min-height: 80px;
+}
+
+.qris-preview-box {
+  display: inline-grid;
+  gap: 6px;
+}
+
+.qris-preview-img {
+  width: 200px;
+  height: 200px;
+  border: 1px solid #d5deea;
+  border-radius: 10px;
+}
+
+.qris-check-text { color: #16a34a; }
+
+.qris-loading-text,
+.qris-empty-box {
+  color: #94a3b8;
+  font-size: 0.88rem;
+  padding: 12px 0;
+}
+
+.qris-error-box {
+  color: #b42318;
+  font-size: 0.88rem;
+  padding: 12px 0;
+}
+
+/* Bill preview */
+.bill-preview-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 10px 0;
+}
+
+.bill-preview-paper {
+  background: #fff;
+  border: 1px dashed #9db5d8;
+  border-radius: 4px;
+  padding: 18px 10px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+  overflow: hidden;
+}
+
+.bill-row {
+  line-height: 1.5;
+  font-size: 0.78rem;
+  overflow: hidden;
+  white-space: pre;
+}
+
+.bill-mono {
+  font-family: 'Courier New', Courier, monospace;
+}
+
+.bill-bold { font-weight: 700; }
+
+.bill-center {
+  text-align: center;
+  white-space: normal;
+}
+
+.bill-small {
+  font-size: 0.72rem;
+  color: #555;
+}
+
+.bill-logo-placeholder {
+  text-align: center;
+  font-size: 0.72rem;
+  color: #aaa;
+  border: 1px dashed #ddd;
+  border-radius: 4px;
+  padding: 8px;
+  margin-bottom: 4px;
+}
+
+.status-error { color: #b42318; }
+
+/* Responsive store settings */
+@media (max-width: 768px) {
+  .store-settings-tabs { gap: 4px; }
+  .store-tab-btn { font-size: 0.82rem; padding: 6px 10px; }
+  .logo-picker-row { flex-direction: column; align-items: stretch; }
+}
+
 .floating-status {
   position: fixed;
   right: 14px;

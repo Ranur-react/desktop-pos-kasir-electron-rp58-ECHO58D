@@ -3,6 +3,7 @@ import CustomOrder from "./CustomOrder";
 import PrinterSettings from "./PrinterSettings";
 import DatabaseSettings from "./DatabaseSettings";
 import AccountSettings from "./AccountSettings";
+import StoreSettings from "./StoreSettings";
 
 function formatRupiah(value) {
   return new Intl.NumberFormat("id-ID", {
@@ -92,6 +93,7 @@ export default function App() {
     const tabs = [];
     if (can("view_order")) tabs.push({ key: "order", label: "Order Katalog", icon: "🛒" });
     if (can("view_kasir")) tabs.push({ key: "kasir", label: "Kasir Cash", icon: "💵" });
+    if (can("manage_printer")) tabs.push({ key: "store", label: "Toko", icon: "⚙️" });
     if (can("view_printer")) tabs.push({ key: "printer", label: "Printer", icon: "🖨" });
     if (can("view_database")) tabs.push({ key: "database", label: "Database", icon: "🗄" });
     if (can("manage_accounts")) tabs.push({ key: "accounts", label: "Akun", icon: "👥" });
@@ -604,6 +606,10 @@ export default function App() {
 
       {tab === "printer" && can("view_printer") && (
         <PrinterSettings onApplied={(cfg) => setPrinter(cfg || null)} />
+      )}
+
+      {tab === "store" && can("manage_printer") && (
+        <StoreSettings onApplied={() => {}} />
       )}
 
       {tab === "database" && can("view_database") && (
