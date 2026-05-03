@@ -82,12 +82,16 @@ function createWindow() {
     minWidth: 900,
     minHeight: 650,
     icon: windowIcon.isEmpty() ? undefined : windowIcon,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false
     }
   });
+
+  win.maximize();
+  win.show();
 
   if (!app.isPackaged && process.env.ELECTRON_START_URL) {
     win.loadURL(process.env.ELECTRON_START_URL);

@@ -231,6 +231,7 @@ export default function App() {
       setLoginForm({ username: "", password: "" });
       await loadDataForPermissions(result.state.permissions || {});
       setAuthStatus(result.message || "Login berhasil.");
+      setTimeout(() => setAuthStatus(""), 3000);
     } catch (err) {
       setAuthStatus(`Login gagal: ${err.message}`);
     }
@@ -248,6 +249,7 @@ export default function App() {
       setAuthStatus(result.message || "Logout berhasil.");
       setShowProfileMenu(false);
       setShowPasswordModal(false);
+      setTimeout(() => setAuthStatus(""), 3000);
     } catch (err) {
       setAuthStatus(`Logout gagal: ${err.message}`);
     }
@@ -443,11 +445,6 @@ export default function App() {
         </div>
 
         <div className="topbar-actions">
-          <button className="top-icon-btn" type="button" title="Notifikasi">
-            🔔
-            <span className="top-icon-badge">2</span>
-          </button>
-
           <div className="profile-menu-wrap">
             <button
               className="top-icon-btn profile-btn"
@@ -455,6 +452,7 @@ export default function App() {
               title="Menu Profil"
               onClick={() => setShowProfileMenu((v) => !v)}
             >
+              <span className="profile-name-display">{authState.user.displayName || authState.user.username}</span>
               👤
             </button>
 

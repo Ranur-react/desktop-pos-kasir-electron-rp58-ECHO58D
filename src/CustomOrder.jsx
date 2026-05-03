@@ -322,6 +322,10 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
         e.preventDefault();
         if (canCreateOrder && cart.length > 0 && !loading) {
           setShowPayment(true);
+          // Blur active input so modal keyboard handlers get clean events
+          if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+          }
         }
         return;
       }
