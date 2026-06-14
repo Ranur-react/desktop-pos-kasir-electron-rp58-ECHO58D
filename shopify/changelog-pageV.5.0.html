@@ -12,6 +12,7 @@
     color: #1a1a2e;
     line-height: 1.7;
   }
+
   .cl-hero {
     background: linear-gradient(135deg, #0f3460, #16213e);
     color: #fff;
@@ -20,16 +21,19 @@
     margin-bottom: 40px;
     text-align: center;
   }
+
   .cl-hero h1 {
     font-size: 2rem;
     margin: 0 0 10px;
     letter-spacing: -0.5px;
   }
+
   .cl-hero p {
     font-size: 1.05rem;
     opacity: 0.85;
     margin: 0;
   }
+
   .cl-version-card {
     border: 1.5px solid #e8eaf0;
     border-radius: 14px;
@@ -37,16 +41,19 @@
     margin-bottom: 28px;
     position: relative;
     background: #fff;
-    box-shadow: 0 2px 12px rgba(15,52,96,0.06);
+    box-shadow: 0 2px 12px rgba(15, 52, 96, 0.06);
     transition: box-shadow 0.2s;
   }
+
   .cl-version-card:hover {
-    box-shadow: 0 6px 24px rgba(15,52,96,0.12);
+    box-shadow: 0 6px 24px rgba(15, 52, 96, 0.12);
   }
+
   .cl-version-card.latest {
     border-color: #0f3460;
     background: #f4f8ff;
   }
+
   .cl-badge-latest {
     position: absolute;
     top: -12px;
@@ -60,6 +67,7 @@
     border-radius: 20px;
     text-transform: uppercase;
   }
+
   .cl-version-header {
     display: flex;
     align-items: center;
@@ -67,11 +75,13 @@
     margin-bottom: 18px;
     flex-wrap: wrap;
   }
+
   .cl-version-num {
     font-size: 1.4rem;
     font-weight: 800;
     color: #0f3460;
   }
+
   .cl-version-date {
     font-size: 0.82rem;
     color: #888;
@@ -79,17 +89,20 @@
     padding: 3px 10px;
     border-radius: 20px;
   }
+
   .cl-version-title {
     font-size: 1rem;
     font-weight: 600;
     color: #444;
     margin-left: auto;
   }
+
   .cl-feat-list {
     list-style: none;
     padding: 0;
     margin: 0 0 22px;
   }
+
   .cl-feat-list li {
     padding: 6px 0 6px 28px;
     position: relative;
@@ -97,15 +110,18 @@
     color: #333;
     border-bottom: 1px dashed #e8eaf0;
   }
+
   .cl-feat-list li:last-child {
     border-bottom: none;
   }
+
   .cl-feat-list li::before {
     content: attr(data-icon);
     position: absolute;
     left: 0;
     font-size: 1rem;
   }
+
   .cl-highlight {
     background: #e8f0fe;
     border-left: 4px solid #0f3460;
@@ -116,6 +132,7 @@
     margin-bottom: 20px;
     font-style: italic;
   }
+
   .cl-download-btn {
     display: inline-flex;
     align-items: center;
@@ -130,23 +147,27 @@
     letter-spacing: 0.3px;
     transition: background 0.2s, transform 0.15s;
   }
+
   .cl-download-btn:hover {
     background: #16213e;
     transform: translateY(-1px);
     color: #fff !important;
   }
+
   .cl-download-btn svg {
     width: 18px;
     height: 18px;
     fill: #fff;
     flex-shrink: 0;
   }
+
   .cl-note {
     font-size: 0.78rem;
     color: #999;
     margin-top: 8px;
     display: block;
   }
+
   .cl-cta-box {
     background: linear-gradient(135deg, #0f3460, #1a5276);
     color: #fff;
@@ -155,15 +176,18 @@
     text-align: center;
     margin-top: 40px;
   }
+
   .cl-cta-box h3 {
     font-size: 1.25rem;
     margin: 0 0 8px;
   }
+
   .cl-cta-box p {
     opacity: 0.85;
     font-size: 0.93rem;
     margin: 0 0 20px;
   }
+
   .cl-cta-btn {
     display: inline-block;
     background: #fff;
@@ -175,19 +199,35 @@
     font-size: 0.95rem;
     transition: opacity 0.2s;
   }
+
   .cl-cta-btn:hover {
     opacity: 0.9;
   }
+
   .cl-section-divider {
     border: none;
     border-top: 2px dashed #e0e4ef;
     margin: 36px 0;
   }
+
   @media (max-width: 600px) {
-    .cl-hero { padding: 28px 20px 24px; }
-    .cl-version-card { padding: 22px 18px; }
-    .cl-version-header { flex-direction: column; align-items: flex-start; gap: 8px; }
-    .cl-version-title { margin-left: 0; }
+    .cl-hero {
+      padding: 28px 20px 24px;
+    }
+
+    .cl-version-card {
+      padding: 22px 18px;
+    }
+
+    .cl-version-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .cl-version-title {
+      margin-left: 0;
+    }
   }
 </style>
 
@@ -197,117 +237,12 @@
   <div class="cl-hero">
     <h1>📦 Barangmudo POS — Rilis &amp; Pembaruan</h1>
     <p>Hei! Kami terus memperbarui aplikasi kasir ini biar makin nyaman dipakai sehari-hari.<br>
-    Yuk, lihat apa saja yang sudah kami tambahkan di setiap versi 👇</p>
+      Yuk, lihat apa saja yang sudah kami tambahkan di setiap versi 👇</p>
   </div>
-
-  <!-- VERSION 6.0 -->
-  <div class="cl-version-card latest">
-    <span class="cl-badge-latest">✨ Terbaru</span>
-    <div class="cl-version-header">
-      <span class="cl-version-num">Versi 6.0</span>
-      <span class="cl-version-date">Mei 2026</span>
-      <span class="cl-version-title">Lebih mulus, lebih responsif</span>
-    </div>
-
-    <div class="cl-highlight">
-      "Update kecil tapi berasa banget — shortcut kasir sekarang lebih responsif, tampilan lebih
-      bersih, dan nggak ada lagi notifikasi yang ganggu. Cocok buat yang udah pakai v5.0."
-    </div>
-
-    <ul class="cl-feat-list">
-      <li data-icon="⌨️">
-        <strong>Shortcut CTRL+B Diperbaiki</strong> — Tekan <code>Ctrl+B</code> untuk buka layar
-        bayar, sekarang langsung bisa pakai tombol <code>1</code>, <code>2</code>, dan
-        <code>Enter</code> tanpa harus klik dulu. Focus otomatis pindah ke modal pembayaran.
-      </li>
-      <li data-icon="🖥️">
-        <strong>Otomatis Fullscreen saat Buka</strong> — Aplikasi langsung maximize ke layar penuh
-        setiap kali dibuka. Nggak perlu klik tombol fullscreen manual lagi — langsung siap
-        dipakai dari detik pertama.
-      </li>
-      <li data-icon="🔔">
-        <strong>Notifikasi Login Lebih Rapi</strong> — Pesan "Login Berhasil" sekarang
-        otomatis hilang setelah 3 detik. Nggak numpuk terus di layar seperti sebelumnya.
-      </li>
-      <li data-icon="👤">
-        <strong>Nama Pengguna di Navbar</strong> — Nama kasir atau admin sekarang tampil
-        langsung di pojok kanan atas di sebelah ikon profil. Lebih jelas siapa yang sedang
-        login tanpa perlu buka menu dulu.
-      </li>
-      <li data-icon="🧹">
-        <strong>Tampilan Navbar Lebih Bersih</strong> — Ikon notifikasi (lonceng) yang
-        belum punya fungsi sudah dihapus. Navbar sekarang lebih simpel dan tidak membingungkan.
-      </li>
-    </ul>
-
-    <a class="cl-download-btn" href="https://drive.google.com/file/d/1R5AEP-dUsWFz1vel6oMVlp81kU_W65VS/view?usp=sharing" target="_blank" rel="noopener noreferrer">
-      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 16l-6-6h4V4h4v6h4l-6 6zm-7 2h14v2H5v-2z"/></svg>
-      Download Versi 6.0
-    </a>
-    <span class="cl-note">File .exe installer untuk Windows 10/11 &bull; Ukuran ~95 MB</span>
-  </div>
-
-  <hr class="cl-section-divider">
-
-  <!-- VERSION 5.0 -->
-  <div class="cl-version-card">
-    <div class="cl-version-header">
-      <span class="cl-version-num">Versi 5.0</span>
-      <span class="cl-version-date">Mei 2026</span>
-      <span class="cl-version-title">Semua bisa diatur langsung dari aplikasi</span>
-    </div>
-
-    <div class="cl-highlight">
-      "Nggak perlu edit file manual lagi! Nama toko, logo, QRIS, folder data, sampai icon aplikasi
-      — semuanya bisa diatur langsung dari dalam app. Setup 5 menit, langsung jalan."
-    </div>
-
-    <ul class="cl-feat-list">
-      <li data-icon="🏪">
-        <strong>Panel Pengaturan Toko</strong> — Tab baru khusus admin untuk atur semua konfigurasi
-        toko: nama, tagline, alamat, nomor WA, dan lebar kertas struk (58mm/80mm). Semua langsung
-        tersimpan tanpa perlu restart.
-      </li>
-      <li data-icon="🖼️">
-        <strong>Logo Toko di Struk</strong> — Upload gambar logo (PNG/JPG) yang tampil di header
-        struk thermal. Pilih file langsung dari file browser, pratinjau tampil seketika.
-      </li>
-      <li data-icon="🪟">
-        <strong>Ganti Icon Aplikasi</strong> — Icon di titlebar dan taskbar Windows sekarang bisa
-        diganti dari dalam app (format .ico atau .png). Perubahan langsung aktif tanpa perlu
-        restart — tidak perlu reinstall.
-      </li>
-      <li data-icon="💳">
-        <strong>Setup QRIS Lebih Mudah</strong> — Tempel konten QRIS statis, langsung muncul
-        preview QR Code-nya. Ada tombol "Uji Cetak" untuk test cetak slip QRIS ke printer sebelum
-        dipakai di kasir.
-      </li>
-      <li data-icon="🧾">
-        <strong>Preview Struk Dummy</strong> — Simulasi tampilan kertas struk berdasarkan setting
-        toko saat ini. Bisa cek format sebelum cetak sungguhan — hemat kertas!
-      </li>
-      <li data-icon="📁">
-        <strong>Pilih Folder Data Sendiri</strong> — Folder penyimpanan transaksi dan order
-        sekarang bisa diubah lewat UI. Cocok untuk yang mau simpan data di USB, NAS, atau OneDrive.
-      </li>
-      <li data-icon="🔧">
-        <strong>Perbaikan Teknis Penting</strong> — Fix icon window yang kembali ke default setelah
-        install. Fix QRIS tidak terbaca karena file .env tidak ditemukan di folder instalasi.
-        Semua konfigurasi sekarang disimpan di satu lokasi yang pasti bisa diakses.
-      </li>
-    </ul>
-
-    <a class="cl-download-btn" href="https://drive.google.com/file/d/16eASjZijuMffqmXfrPoLVAw9AvbWDgKf/view?usp=sharing" target="_blank" rel="noopener noreferrer">
-      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 16l-6-6h4V4h4v6h4l-6 6zm-7 2h14v2H5v-2z"/></svg>
-      Download Versi 5.0
-    </a>
-    <span class="cl-note">File .exe installer untuk Windows 10/11 &bull; Ukuran ~95 MB</span>
-  </div>
-
-  <hr class="cl-section-divider">
 
   <!-- VERSION 4.0 -->
-  <div class="cl-version-card">
+  <div class="cl-version-card latest">
+    <span class="cl-badge-latest">✨ Terbaru</span>
     <div class="cl-version-header">
       <span class="cl-version-num">Versi 4.0</span>
       <span class="cl-version-date">Mei 2026</span>
@@ -352,11 +287,14 @@
       </li>
     </ul>
 
-    <a class="cl-download-btn" href="https://drive.google.com/file/d/1i4kUxQP2CeS3Na_S0-9mJ5PSOuL_BMYJ/view?usp=sharing" target="_blank" rel="noopener noreferrer">
-      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 16l-6-6h4V4h4v6h4l-6 6zm-7 2h14v2H5v-2z"/></svg>
+    <a class="cl-download-btn" href="https://drive.google.com/file/d/1i4kUxQP2CeS3Na_S0-9mJ5PSOuL_BMYJ/view?usp=sharing"
+      target="_blank" rel="noopener noreferrer">
+      <svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 16l-6-6h4V4h4v6h4l-6 6zm-7 2h14v2H5v-2z"></path>
+      </svg>
       Download Versi 4.0
     </a>
-    <span class="cl-note">File .exe installer untuk Windows 10/11 &bull; Ukuran ~95 MB</span>
+    <span class="cl-note">File .exe installer untuk Windows 10/11 • Ukuran ~95 MB</span>
   </div>
 
   <hr class="cl-section-divider">
@@ -375,40 +313,43 @@
 
     <ul class="cl-feat-list">
       <li data-icon="🔐">
-        <strong>Sistem Login &amp; Hak Akses</strong> — Admin dan Kasir punya akses yang berbeda. 
+        <strong>Sistem Login &amp; Hak Akses</strong> — Admin dan Kasir punya akses yang berbeda.
         Kasir cukup fokus ke transaksi, admin yang atur settings-nya.
       </li>
       <li data-icon="⌨️">
-        <strong>Operasi Full Keyboard</strong> — Dari input produk, harga, qty, sampai bayar — semua 
+        <strong>Operasi Full Keyboard</strong> — Dari input produk, harga, qty, sampai bayar — semua
         bisa lewat <code>Tab</code>, <code>Enter</code>, dan shortcut. Nggak perlu klik klik lagi!
       </li>
       <li data-icon="🎹">
-        <strong>Shortcut Cepat Kasir</strong> — <code>Ctrl+I</code> uang masuk, <code>Ctrl+U</code> keluar, 
+        <strong>Shortcut Cepat Kasir</strong> — <code>Ctrl+I</code> uang masuk, <code>Ctrl+U</code> keluar,
         <code>Ctrl+P</code> cetak, <code>F2</code> nominal, <code>F3</code> keterangan.
       </li>
       <li data-icon="🗂️">
-        <strong>Tampilan Dashboard Baru</strong> — Navigasi tab lebih rapi, profil user di pojok kanan atas, 
+        <strong>Tampilan Dashboard Baru</strong> — Navigasi tab lebih rapi, profil user di pojok kanan atas,
         ubah password bisa langsung dari menu tanpa keluar halaman.
       </li>
       <li data-icon="🛒">
-        <strong>Mode Custom Order</strong> — Produk nggak ada di katalog? Ketik nama, harga, qty — 
+        <strong>Mode Custom Order</strong> — Produk nggak ada di katalog? Ketik nama, harga, qty —
         langsung masuk keranjang. Alur <code>Tab → Tab → Enter</code> selesai dalam hitungan detik.
       </li>
       <li data-icon="💳">
-        <strong>Shortcut Pembayaran</strong> — Di layar bayar: tekan <code>1</code> untuk Tunai, 
+        <strong>Shortcut Pembayaran</strong> — Di layar bayar: tekan <code>1</code> untuk Tunai,
         <code>2</code> untuk QRIS, <code>Enter</code> konfirmasi, <code>Esc</code> batal.
       </li>
       <li data-icon="🔌">
-        <strong>Koneksi Database Opsional</strong> — App tetap jalan meski tanpa MySQL. 
+        <strong>Koneksi Database Opsional</strong> — App tetap jalan meski tanpa MySQL.
         Data transaksi tersimpan lokal di JSON, MySQL hanya untuk sinkronisasi tambahan.
       </li>
     </ul>
 
-    <a class="cl-download-btn" href="https://drive.google.com/file/d/1_haQg88NosaJV110jLBrLncAlodwJF_C/view" target="_blank" rel="noopener noreferrer">
-      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 16l-6-6h4V4h4v6h4l-6 6zm-7 2h14v2H5v-2z"/></svg>
+    <a class="cl-download-btn" href="https://drive.google.com/file/d/1_haQg88NosaJV110jLBrLncAlodwJF_C/view"
+      target="_blank" rel="noopener noreferrer">
+      <svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 16l-6-6h4V4h4v6h4l-6 6zm-7 2h14v2H5v-2z"></path>
+      </svg>
       Download Versi 3.0
     </a>
-    <span class="cl-note">File .exe installer untuk Windows 10/11 &bull; Ukuran ~90 MB</span>
+    <span class="cl-note">File .exe installer untuk Windows 10/11 • Ukuran ~90 MB</span>
   </div>
 
   <hr class="cl-section-divider">
@@ -427,36 +368,39 @@
 
     <ul class="cl-feat-list">
       <li data-icon="📋">
-        <strong>Import Katalog dari Shopify CSV</strong> — Upload file ekspor produk Shopify, 
+        <strong>Import Katalog dari Shopify CSV</strong> — Upload file ekspor produk Shopify,
         langsung muncul di katalog kasir. Nggak perlu input ulang satu-satu 🎉
       </li>
       <li data-icon="🔍">
-        <strong>Pencarian Produk Real-time</strong> — Ketik beberapa huruf, produk langsung muncul. 
+        <strong>Pencarian Produk Real-time</strong> — Ketik beberapa huruf, produk langsung muncul.
         Makin banyak produk, makin berguna fitur ini.
       </li>
       <li data-icon="🧾">
-        <strong>Struk Termal</strong> — Cetak struk langsung ke printer thermal 58mm/80mm. 
+        <strong>Struk Termal</strong> — Cetak struk langsung ke printer thermal 58mm/80mm.
         Format rapi, bisa diatur nama toko dan footer-nya.
       </li>
       <li data-icon="📊">
-        <strong>Riwayat Transaksi Harian</strong> — Lihat semua transaksi hari ini, lengkap dengan 
+        <strong>Riwayat Transaksi Harian</strong> — Lihat semua transaksi hari ini, lengkap dengan
         total, metode bayar, dan tombol cetak ulang.
       </li>
       <li data-icon="💰">
-        <strong>Rekap Kas</strong> — Catat uang masuk dan keluar kas. Cocok buat pembukuan harian 
+        <strong>Rekap Kas</strong> — Catat uang masuk dan keluar kas. Cocok buat pembukuan harian
         yang simpel tanpa ribet.
       </li>
       <li data-icon="🖨️">
-        <strong>Pengaturan Printer</strong> — Pilih printer dari daftar yang terdeteksi, 
+        <strong>Pengaturan Printer</strong> — Pilih printer dari daftar yang terdeteksi,
         test cetak bisa langsung dari settings.
       </li>
     </ul>
 
-    <a class="cl-download-btn" href="https://drive.google.com/file/d/1VFF6aKLa31BQqutdBbBge81WX6VawKzK/view" target="_blank" rel="noopener noreferrer">
-      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 16l-6-6h4V4h4v6h4l-6 6zm-7 2h14v2H5v-2z"/></svg>
+    <a class="cl-download-btn" href="https://drive.google.com/file/d/1VFF6aKLa31BQqutdBbBge81WX6VawKzK/view"
+      target="_blank" rel="noopener noreferrer">
+      <svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 16l-6-6h4V4h4v6h4l-6 6zm-7 2h14v2H5v-2z"></path>
+      </svg>
       Download Versi 2.0
     </a>
-    <span class="cl-note">File .exe installer untuk Windows 10/11 &bull; Ukuran ~85 MB</span>
+    <span class="cl-note">File .exe installer untuk Windows 10/11 • Ukuran ~85 MB</span>
   </div>
 
   <hr class="cl-section-divider">
@@ -475,35 +419,38 @@
 
     <ul class="cl-feat-list">
       <li data-icon="🏪">
-        <strong>Kasir Dasar</strong> — Tambah item ke keranjang, hitung total, proses pembayaran. 
+        <strong>Kasir Dasar</strong> — Tambah item ke keranjang, hitung total, proses pembayaran.
         Simpel tapi fungsional untuk toko kecil hingga menengah.
       </li>
       <li data-icon="💵">
-        <strong>Pembayaran Tunai &amp; QRIS</strong> — Dua metode bayar paling umum di Indonesia 
+        <strong>Pembayaran Tunai &amp; QRIS</strong> — Dua metode bayar paling umum di Indonesia
         sudah tersedia dari versi pertama.
       </li>
       <li data-icon="📁">
-        <strong>Penyimpanan Lokal</strong> — Semua data transaksi disimpan di komputer kamu, 
+        <strong>Penyimpanan Lokal</strong> — Semua data transaksi disimpan di komputer kamu,
         bukan di cloud. Aman, privat, bisa jalan offline.
       </li>
       <li data-icon="🖥️">
-        <strong>Aplikasi Desktop Windows</strong> — Dibangun dengan teknologi Electron, 
+        <strong>Aplikasi Desktop Windows</strong> — Dibangun dengan teknologi Electron,
         berjalan ringan di Windows 10 ke atas.
       </li>
     </ul>
 
-    <a class="cl-download-btn" href="https://drive.google.com/file/d/17ezNVEC9uVuVsDKNV_gN3MBbdynys1__/view" target="_blank" rel="noopener noreferrer">
-      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 16l-6-6h4V4h4v6h4l-6 6zm-7 2h14v2H5v-2z"/></svg>
+    <a class="cl-download-btn" href="https://drive.google.com/file/d/17ezNVEC9uVuVsDKNV_gN3MBbdynys1__/view"
+      target="_blank" rel="noopener noreferrer">
+      <svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 16l-6-6h4V4h4v6h4l-6 6zm-7 2h14v2H5v-2z"></path>
+      </svg>
       Download Versi 1.0
     </a>
-    <span class="cl-note">File .exe installer untuk Windows 10/11 &bull; Ukuran ~80 MB</span>
+    <span class="cl-note">File .exe installer untuk Windows 10/11 • Ukuran ~80 MB</span>
   </div>
 
   <!-- CTA BOX -->
   <div class="cl-cta-box">
     <h3>Ada pertanyaan atau masukan? 💬</h3>
-    <p>Kami senang banget dapet feedback dari pengguna langsung. Kalau ada fitur yang pengen ditambahkan 
-    atau ada bug yang ditemuin, langsung aja hubungi kami ya!</p>
+    <p>Kami senang banget dapet feedback dari pengguna langsung. Kalau ada fitur yang pengen ditambahkan
+      atau ada bug yang ditemuin, langsung aja hubungi kami ya!</p>
     <a class="cl-cta-btn" href="/pages/contact">Hubungi Kami</a>
   </div>
 

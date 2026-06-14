@@ -358,6 +358,18 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
         return;
       }
 
+      if ((e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "ArrowLeft" || e.key === "ArrowRight") &&
+          (document.activeElement === catalogSearchRef.current || !isTyping) &&
+          !e.ctrlKey && !e.metaKey) {
+        if (filteredProducts.length === 0) return;
+        e.preventDefault();
+        const currentIndex = filteredProducts.findIndex((p) => p.id === selectedProductId);
+        const delta = (e.key === "ArrowDown" || e.key === "ArrowRight") ? 1 : -1;
+        const nextIndex = Math.min(Math.max(currentIndex + delta, 0), filteredProducts.length - 1);
+        setSelectedProductId(filteredProducts[nextIndex].id);
+        return;
+      }
+
       if (e.key === "Tab" && document.activeElement === catalogSearchRef.current && isCustomFallbackMode) {
         e.preventDefault();
         if (!canCreateOrder) return;
@@ -418,7 +430,7 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
 
     window.addEventListener("keydown", onKeydown);
     return () => window.removeEventListener("keydown", onKeydown);
-  }, [cart, loading, canCreateOrder, isCustomFallbackMode, selectedProduct, manualPrice, manualQty, catalogSearch]);
+}, [cart, loading, canCreateOrder, isCustomFallbackMode, selectedProduct, selectedProductId, filteredProducts, manualPrice, manualQty, catalogSearch]);
 
   return (
     <>
@@ -489,6 +501,12 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
                 key={p.id}
                 className={`product-card ${selectedProductId === p.id ? "active" : ""}`}
                 onClick={() => setSelectedProductId(p.id)}
+                onDoubleClick={() => {
+                  setSelectedProductId(p.id);
+                  if (canCreateOrder && p.variants?.length > 0) {
+                    addVariantToCart(p, p.variants[0]);
+                  }
+                }}
               >
                 <div className="product-card-title">{p.title}</div>
                 <div className="product-card-meta">
