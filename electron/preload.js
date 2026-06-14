@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("posApi", {
   createOrder: (payload) => ipcRenderer.invoke("order:create", payload),
   returOrderItem: (payload) => ipcRenderer.invoke("order:retur", payload),
   getOrderById: (orderId) => ipcRenderer.invoke("order:get-by-id", orderId),
+  getOrdersByDateRange: (payload) => ipcRenderer.invoke("order:get-by-date-range", payload),
 
   // QRIS Statis
   getQrisImage: () => ipcRenderer.invoke("qris:image"),
@@ -29,6 +30,8 @@ contextBridge.exposeInMainWorld("posApi", {
   // Printer settings
   listPrinters: () => ipcRenderer.invoke("printer:list"),
   setDefaultPrinter: (payload) => ipcRenderer.invoke("printer:set-default", payload),
+  getPrinterToggleConfig: () => ipcRenderer.invoke("printer:get-toggle-config"),
+  setPrinterToggleConfig: (payload) => ipcRenderer.invoke("printer:set-toggle-config", payload),
 
   // Auth + Account Management
   getAuthState: () => ipcRenderer.invoke("auth:get-state"),

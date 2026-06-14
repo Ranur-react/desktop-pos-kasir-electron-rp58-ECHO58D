@@ -41,15 +41,25 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
   const [showPayment, setShowPayment] = useState(false);
   const [returTarget, setReturTarget] = useState(null);
 
-  const [showSummary, setShowSummary] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
+  // "summary" | "today" | "all"
+  const [historyTab, setHistoryTab] = useState("summary");
 
   const [orderSearch, setOrderSearch] = useState("");
   const [orderPage, setOrderPage] = useState(0);
+  const [expandedOrderId, setExpandedOrderId] = useState(null);
+
+  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+  const [allHistoryFrom, setAllHistoryFrom] = useState(todayStr);
+  const [allHistoryTo, setAllHistoryTo] = useState(todayStr);
+  const [allHistoryOrders, setAllHistoryOrders] = useState([]);
+  const [allHistoryLoading, setAllHistoryLoading] = useState(false);
+  const [allHistorySearch, setAllHistorySearch] = useState("");
+  const [allHistoryPage, setAllHistoryPage] = useState(0);
+  const [allHistoryExpandedId, setAllHistoryExpandedId] = useState(null);
+  const [allHistoryLoaded, setAllHistoryLoaded] = useState(false);
 
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
-  const [expandedOrderId, setExpandedOrderId] = useState(null);
 
   const catalogSearchRef = useRef(null);
   const cartSearchRef = useRef(null);
@@ -332,8 +342,8 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
 
       if ((e.altKey && key === "s") || (e.altKey && key === "h")) {
         e.preventDefault();
-        if (key === "s") setShowSummary((v) => !v);
-        if (key === "h") setShowHistory((v) => !v);
+        if (key === "s") setHistoryTab("summary");
+        if (key === "h") setHistoryTab("today");
         return;
       }
 
@@ -704,12 +714,286 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
       </section>
       </div>
 
-      <section className="panel collapsible-panel">
-        <button className="collapse-toggle" onClick={() => setShowSummary((v) => !v)}>
-          <h2>Summary Order Hari Ini</h2>
-          <span className="chevron">{showSummary ? "▲" : "▼"}</span>
-        </button>
-        {showSummary && (
+      <OrderHistoryPanel
+        orders={orders}
+        summary={summary}
+        historyTab={historyTab}
+        setHistoryTab={setHistoryTab}
+        orderSearch={orderSearch}
+        setOrderSearch={setOrderSearch}
+        orderPage={orderPage}
+        setOrderPage={setOrderPage}
+        expandedOrderId={expandedOrderId}
+        setExpandedOrderId={setExpandedOrderId}
+        allHistoryFrom={allHistoryFrom}
+        setAllHistoryFrom={setAllHistoryFrom}
+        allHistoryTo={allHistoryTo}
+        setAllHistoryTo={setAllHistoryTo}
+        allHistoryOrders={allHistoryOrders}
+        setAllHistoryOrders={setAllHistoryOrders}
+        allHistoryLoading={allHistoryLoading}
+        setAllHistoryLoading={setAllHistoryLoading}
+        allHistorySearch={allHistorySearch}
+        setAllHistorySearch={setAllHistorySearch}
+        allHistoryPage={allHistoryPage}
+        setAllHistoryPage={setAllHistoryPage}
+        allHistoryExpandedId={allHistoryExpandedId}
+        setAllHistoryExpandedId={setAllHistoryExpandedId}
+        allHistoryLoaded={allHistoryLoaded}
+        setAllHistoryLoaded={setAllHistoryLoaded}
+        canRetur={canRetur}
+        setReturTarget={setReturTarget}
+        todayStr={todayStr}
+      />
+
+      {showPayment && canCreateOrder && (
+        <PaymentModal
+          total={cartTotal}
+          loading={loading}
+          onPay={handlePaymentDone}
+          onClose={() => setShowPayment(false)}
+        />
+      )}
+
+      {returTarget && canRetur && (
+        <ReturModal
+          order={returTarget.order}
+          line={returTarget.line}
+          loading={loading}
+          onRetur={handleRetur}
+          onClose={() => setReturTarget(null)}
+        />
+      )}
+    </>
+  );
+}
+
+// ── Order History Panel ────────────────────────────────────────────────────
+
+const ALL_HISTORY_PAGE_SIZE = 10;
+
+function OrderTable({ orders, emptyMsg, expandedId, setExpandedId, canRetur, setReturTarget }) {
+  const totalPages = Math.max(1, Math.ceil(orders.length / ALL_HISTORY_PAGE_SIZE));
+  const [page, setPage] = useState(0);
+  const paged = orders.slice(page * ALL_HISTORY_PAGE_SIZE, (page + 1) * ALL_HISTORY_PAGE_SIZE);
+
+  return (
+    <>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Waktu</th>
+              <th>Order ID</th>
+              <th>Items</th>
+              <th>Metode</th>
+              <th>Total</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {paged.length === 0 && (
+              <tr>
+                <td colSpan="7" className="empty-cell">{emptyMsg}</td>
+              </tr>
+            )}
+            {paged.map((ord) => (
+              <Fragment key={ord.id}>
+                <tr
+                  className="order-row"
+                  onClick={() => setExpandedId(expandedId === ord.id ? null : ord.id)}
+                >
+                  <td>{formatDate(ord.createdAt)}</td>
+                  <td className="mono">{ord.id}</td>
+                  <td>{ord.items.length} item</td>
+                  <td>{ord.paymentMethod === "cash" ? "Cash" : "QRIS"}</td>
+                  <td className="txt-in">{formatRupiah(ord.subtotal)}</td>
+                  <td>
+                    <span className={`badge badge-${ord.status}`}>
+                      {ord.status === "paid"
+                        ? "Lunas"
+                        : ord.status === "partial-return"
+                          ? "Partial Retur"
+                          : "Full Retur"}
+                    </span>
+                  </td>
+                  <td>
+                    <button className="btn-expand">{expandedId === ord.id ? "▲" : "▼"}</button>
+                  </td>
+                </tr>
+                {expandedId === ord.id && (
+                  <tr>
+                    <td colSpan="7" className="order-detail-cell">
+                      <table className="inner-table">
+                        <thead>
+                          <tr>
+                            <th>Barang</th>
+                            <th>Harga</th>
+                            <th>Qty</th>
+                            <th>Subtotal</th>
+                            <th>Status</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {ord.items.map((ln) => (
+                            <tr key={ln.lineId} className={ln.returStatus === "returned" ? "row-returned" : ""}>
+                              <td>{ln.title}</td>
+                              <td>{formatRupiah(ln.price)}</td>
+                              <td>{ln.qty}</td>
+                              <td>{formatRupiah(ln.lineTotal)}</td>
+                              <td>
+                                {ln.returStatus === "returned" ? (
+                                  <span className="badge badge-retur">Diretur</span>
+                                ) : (
+                                  "OK"
+                                )}
+                              </td>
+                              <td>
+                                {ln.returStatus !== "returned" && setReturTarget && (
+                                  <button
+                                    className="btn btn-retur-sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setReturTarget({ order: ord, line: ln });
+                                    }}
+                                    disabled={!canRetur}
+                                  >
+                                    Retur
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {ord.returHistory?.length > 0 && (
+                        <div className="retur-history">
+                          <strong>Retur History:</strong>
+                          <ul>
+                            {ord.returHistory.map((rh, i) => (
+                              <li key={i}>
+                                {formatDate(rh.returAt)} - {rh.title} ({rh.qty}x {formatRupiah(rh.price)})
+                                {rh.reason ? ` - ${rh.reason}` : ""}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {orders.length > ALL_HISTORY_PAGE_SIZE && (
+        <div className="paging">
+          <button disabled={page <= 0} onClick={() => setPage((p) => p - 1)}>← Prev</button>
+          <span>Hal {page + 1} / {totalPages}</span>
+          <button disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>Next →</button>
+        </div>
+      )}
+    </>
+  );
+}
+
+function OrderHistoryPanel({
+  orders, summary, historyTab, setHistoryTab,
+  orderSearch, setOrderSearch, orderPage, setOrderPage,
+  expandedOrderId, setExpandedOrderId,
+  allHistoryFrom, setAllHistoryFrom, allHistoryTo, setAllHistoryTo,
+  allHistoryOrders, setAllHistoryOrders, allHistoryLoading, setAllHistoryLoading,
+  allHistorySearch, setAllHistorySearch, allHistoryPage, setAllHistoryPage,
+  allHistoryExpandedId, setAllHistoryExpandedId,
+  allHistoryLoaded, setAllHistoryLoaded,
+  canRetur, setReturTarget, todayStr,
+}) {
+  const filteredToday = useMemo(() => {
+    if (!orderSearch.trim()) return orders;
+    const q = orderSearch.toLowerCase();
+    return orders.filter(
+      (o) =>
+        o.id.toLowerCase().includes(q) ||
+        o.paymentMethod.toLowerCase().includes(q) ||
+        o.items.some((i) => i.title.toLowerCase().includes(q) || (i.sku || "").toLowerCase().includes(q))
+    );
+  }, [orders, orderSearch]);
+
+  const filteredAll = useMemo(() => {
+    if (!allHistorySearch.trim()) return allHistoryOrders;
+    const q = allHistorySearch.toLowerCase();
+    return allHistoryOrders.filter(
+      (o) =>
+        o.id.toLowerCase().includes(q) ||
+        o.paymentMethod.toLowerCase().includes(q) ||
+        o.items.some((i) => i.title.toLowerCase().includes(q) || (i.sku || "").toLowerCase().includes(q))
+    );
+  }, [allHistoryOrders, allHistorySearch]);
+
+  async function loadAllHistory() {
+    try {
+      setAllHistoryLoading(true);
+      const result = await window.posApi.getOrdersByDateRange({ from: allHistoryFrom, to: allHistoryTo });
+      setAllHistoryOrders(Array.isArray(result) ? result : []);
+      setAllHistoryPage(0);
+      setAllHistoryExpandedId(null);
+      setAllHistoryLoaded(true);
+    } catch (err) {
+      setAllHistoryOrders([]);
+      setAllHistoryLoaded(true);
+    } finally {
+      setAllHistoryLoading(false);
+    }
+  }
+
+  // Auto-load when switching to "all" tab for the first time
+  useEffect(() => {
+    if (historyTab === "all" && !allHistoryLoaded) {
+      loadAllHistory();
+    }
+  }, [historyTab]);
+
+  const allSummary = useMemo(() => {
+    const paid = allHistoryOrders.filter((o) => o.status === "paid" || o.status === "partial-return");
+    return {
+      total: paid.reduce((s, o) => s + o.subtotal, 0),
+      count: paid.length,
+      cash: paid.filter((o) => o.paymentMethod === "cash").reduce((s, o) => s + o.subtotal, 0),
+      qris: paid.filter((o) => o.paymentMethod === "qris").reduce((s, o) => s + o.subtotal, 0),
+    };
+  }, [allHistoryOrders]);
+
+  return (
+    <section className="panel order-history-panel">
+      <div className="oh-header">
+        <h2>Order History</h2>
+        <div className="oh-tabs">
+          <button
+            className={`oh-tab-btn${historyTab === "summary" ? " oh-tab-active" : ""}`}
+            onClick={() => setHistoryTab("summary")}
+          >
+            Summary Hari Ini
+          </button>
+          <button
+            className={`oh-tab-btn${historyTab === "today" ? " oh-tab-active" : ""}`}
+            onClick={() => setHistoryTab("today")}
+          >
+            Riwayat Hari Ini <span className="oh-badge">{orders.length}</span>
+          </button>
+          <button
+            className={`oh-tab-btn${historyTab === "all" ? " oh-tab-active" : ""}`}
+            onClick={() => setHistoryTab("all")}
+          >
+            Semua Riwayat
+          </button>
+        </div>
+      </div>
+
+      {historyTab === "summary" && (
+        <div className="oh-body">
           <div className="summary-grid summary-grid-5">
             <article>
               <h3>Total Penjualan</h3>
@@ -732,176 +1016,90 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
               <p className="txt-out">{formatRupiah(summary.totalReturned)}</p>
             </article>
           </div>
-        )}
-      </section>
+        </div>
+      )}
 
-      <section className="panel collapsible-panel">
-        <button className="collapse-toggle" onClick={() => setShowHistory((v) => !v)}>
-          <h2>Riwayat Order Hari Ini ({orders.length})</h2>
-          <span className="chevron">{showHistory ? "▲" : "▼"}</span>
-        </button>
-        {showHistory && (
-          <>
+      {historyTab === "today" && (
+        <div className="oh-body">
+          <input
+            className="search-input search-full"
+            type="text"
+            placeholder="Cari order (ID, barang, metode)..."
+            value={orderSearch}
+            onChange={(e) => { setOrderSearch(e.target.value); setOrderPage(0); }}
+          />
+          <OrderTable
+            orders={filteredToday}
+            emptyMsg={orders.length === 0 ? "Belum ada order hari ini." : "Tidak ditemukan."}
+            expandedId={expandedOrderId}
+            setExpandedId={setExpandedOrderId}
+            canRetur={canRetur}
+            setReturTarget={setReturTarget}
+          />
+        </div>
+      )}
+
+      {historyTab === "all" && (
+        <div className="oh-body">
+          <div className="oh-date-filter">
+            <label>Dari</label>
             <input
-              className="search-input search-full"
-              type="text"
-              placeholder="Cari order (ID, barang, metode)..."
-              value={orderSearch}
-              onChange={(e) => {
-                setOrderSearch(e.target.value);
-                setOrderPage(0);
-              }}
+              type="date"
+              className="oh-date-input"
+              value={allHistoryFrom}
+              max={todayStr}
+              onChange={(e) => setAllHistoryFrom(e.target.value)}
             />
+            <label>Sampai</label>
+            <input
+              type="date"
+              className="oh-date-input"
+              value={allHistoryTo}
+              max={todayStr}
+              onChange={(e) => setAllHistoryTo(e.target.value)}
+            />
+            <button
+              className="btn btn-secondary oh-search-btn"
+              onClick={loadAllHistory}
+              disabled={allHistoryLoading}
+            >
+              {allHistoryLoading ? "Memuat..." : "Tampilkan"}
+            </button>
+          </div>
 
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Waktu</th>
-                    <th>Order ID</th>
-                    <th>Items</th>
-                    <th>Metode</th>
-                    <th>Total</th>
-                    <th>Status</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pagedOrders.length === 0 && (
-                    <tr>
-                      <td colSpan="7" className="empty-cell">
-                        {orders.length === 0 ? "Belum ada order hari ini." : "Tidak ditemukan."}
-                      </td>
-                    </tr>
-                  )}
-                  {pagedOrders.map((ord) => (
-                    <Fragment key={ord.id}>
-                      <tr
-                        className="order-row"
-                        onClick={() => setExpandedOrderId(expandedOrderId === ord.id ? null : ord.id)}
-                      >
-                        <td>{formatDate(ord.createdAt)}</td>
-                        <td className="mono">{ord.id}</td>
-                        <td>{ord.items.length} item</td>
-                        <td>{ord.paymentMethod === "cash" ? "Cash" : "QRIS"}</td>
-                        <td className="txt-in">{formatRupiah(ord.subtotal)}</td>
-                        <td>
-                          <span className={`badge badge-${ord.status}`}>
-                            {ord.status === "paid"
-                              ? "Lunas"
-                              : ord.status === "partial-return"
-                                ? "Partial Retur"
-                                : "Full Retur"}
-                          </span>
-                        </td>
-                        <td>
-                          <button className="btn-expand">{expandedOrderId === ord.id ? "▲" : "▼"}</button>
-                        </td>
-                      </tr>
-                      {expandedOrderId === ord.id && (
-                        <tr>
-                          <td colSpan="7" className="order-detail-cell">
-                            <table className="inner-table">
-                              <thead>
-                                <tr>
-                                  <th>Barang</th>
-                                  <th>Harga</th>
-                                  <th>Qty</th>
-                                  <th>Subtotal</th>
-                                  <th>Status</th>
-                                  <th></th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {ord.items.map((ln) => (
-                                  <tr key={ln.lineId} className={ln.returStatus === "returned" ? "row-returned" : ""}>
-                                    <td>{ln.title}</td>
-                                    <td>{formatRupiah(ln.price)}</td>
-                                    <td>{ln.qty}</td>
-                                    <td>{formatRupiah(ln.lineTotal)}</td>
-                                    <td>
-                                      {ln.returStatus === "returned" ? (
-                                        <span className="badge badge-retur">Diretur</span>
-                                      ) : (
-                                        "OK"
-                                      )}
-                                    </td>
-                                    <td>
-                                      {ln.returStatus !== "returned" && (
-                                        <button
-                                          className="btn btn-retur-sm"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setReturTarget({ order: ord, line: ln });
-                                          }}
-                                          disabled={!canRetur}
-                                        >
-                                          Retur
-                                        </button>
-                                      )}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-
-                            {ord.returHistory.length > 0 && (
-                              <div className="retur-history">
-                                <strong>Retur History:</strong>
-                                <ul>
-                                  {ord.returHistory.map((rh, i) => (
-                                    <li key={i}>
-                                      {formatDate(rh.returAt)} - {rh.title} ({rh.qty}x {formatRupiah(rh.price)})
-                                      {rh.reason ? ` - ${rh.reason}` : ""}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  ))}
-                </tbody>
-              </table>
+          {allHistoryLoaded && (
+            <div className="oh-all-summary">
+              <span>{allSummary.count} order</span>
+              <span>Total: <strong>{formatRupiah(allSummary.total)}</strong></span>
+              <span>Cash: {formatRupiah(allSummary.cash)}</span>
+              <span>QRIS: {formatRupiah(allSummary.qris)}</span>
             </div>
+          )}
 
-            {filteredOrders.length > ORDER_PAGE_SIZE && (
-              <div className="paging">
-                <button disabled={orderPage <= 0} onClick={() => setOrderPage((p) => p - 1)}>
-                  ← Prev
-                </button>
-                <span>
-                  Hal {orderPage + 1} / {orderTotalPages}
-                </span>
-                <button disabled={orderPage >= orderTotalPages - 1} onClick={() => setOrderPage((p) => p + 1)}>
-                  Next →
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </section>
+          <input
+            className="search-input search-full"
+            type="text"
+            placeholder="Cari order (ID, barang, metode)..."
+            value={allHistorySearch}
+            onChange={(e) => { setAllHistorySearch(e.target.value); setAllHistoryPage(0); }}
+          />
 
-      {showPayment && canCreateOrder && (
-        <PaymentModal
-          total={cartTotal}
-          loading={loading}
-          onPay={handlePaymentDone}
-          onClose={() => setShowPayment(false)}
-        />
+          {allHistoryLoaded ? (
+            <OrderTable
+              orders={filteredAll}
+              emptyMsg={allHistoryOrders.length === 0 ? "Tidak ada order pada periode ini." : "Tidak ditemukan."}
+              expandedId={allHistoryExpandedId}
+              setExpandedId={setAllHistoryExpandedId}
+              canRetur={false}
+              setReturTarget={null}
+            />
+          ) : (
+            <div className="empty-cell" style={{ padding: "24px 0", textAlign: "center" }}>
+              {allHistoryLoading ? "Memuat data..." : "Pilih rentang tanggal lalu klik Tampilkan."}
+            </div>
+          )}
+        </div>
       )}
-
-      {returTarget && canRetur && (
-        <ReturModal
-          order={returTarget.order}
-          line={returTarget.line}
-          loading={loading}
-          onRetur={handleRetur}
-          onClose={() => setReturTarget(null)}
-        />
-      )}
-    </>
+    </section>
   );
 }

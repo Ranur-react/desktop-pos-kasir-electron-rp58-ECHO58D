@@ -80,7 +80,9 @@ function getRuntimeConfig() {
     storeWa: getConfigValue(dotEnv, "STORE_WA", ""),
     storeLogoPath: resolveLogoPath(storeLogoPathRaw),
     qrisStaticContent: getConfigValue(dotEnv, "QRIS_STATIC_CONTENT", ""),
-    appIconPath: getConfigValue(dotEnv, "APP_ICON_PATH", "")
+    appIconPath: getConfigValue(dotEnv, "APP_ICON_PATH", ""),
+    printerEnabled: getConfigValue(dotEnv, "PRINTER_ENABLED", "true") !== "false",
+    drawerEnabled: getConfigValue(dotEnv, "DRAWER_ENABLED", "true") !== "false"
   };
 }
 

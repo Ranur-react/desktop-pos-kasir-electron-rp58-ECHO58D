@@ -363,10 +363,108 @@ async function getTodayOrdersSummaryDB() {
   }
 }
 
+function getOrdersByDateRangeJSON(app, from, to) {
+  const dataDir = resolveDataDir(app);
+  let files;
+  try {
+    files = fs.readdirSync(dataDir);
+  } catch {
+    return [];
+  }
+
+  const results = [];
+  for (const file of files) {
+    const match = file.match(/^orders-(\d{4}-\d{2}-\d{2})\.json$/);
+    if (!match) continue;
+    const dateKey = match[1];
+    if (dateKey < from || dateKey > to) continue;
+    const filePath = path.join(dataDir, file);
+    try {
+      const raw = fs.readFileSync(filePath, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) results.push(...parsed);
+    } catch {
+      // skip corrupted files
+    }
+  }
+
+  return results.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+async function getOrdersByDateRangeDB(from, to) {
+  try {
+    const pool = await db.getPool();
+    if (!pool) return [];
+
+    const [orderRows] = await pool.execute(
+      `SELECT * FROM orders WHERE created_date BETWEEN ? AND ? ORDER BY created_at DESC`,
+      [from, to]
+    );
+
+    if (orderRows.length === 0) return [];
+
+    const orders = [];
+    for (const orderRow of orderRows) {
+      const [itemRows] = await pool.execute(
+        `SELECT * FROM order_items WHERE order_id = ?`,
+        [orderRow.id]
+      );
+      const [returRows] = await pool.execute(
+        `SELECT * FROM order_retur_history WHERE order_id = ?`,
+        [orderRow.id]
+      ).catch(() => [[]]);
+
+      orders.push({
+        id: orderRow.id,
+        items: itemRows.map((item) => ({
+          lineId: item.line_id,
+          title: item.title,
+          price: Number(item.price),
+          qty: item.qty,
+          lineTotal: Number(item.line_total),
+          sku: item.sku,
+          variantTitle: item.variant_title,
+          productHandle: item.product_handle,
+          returStatus: item.retur_status
+        })),
+        subtotal: Number(orderRow.subtotal),
+        paymentMethod: orderRow.payment_method,
+        cashGiven: orderRow.cash_given ? Number(orderRow.cash_given) : null,
+        change: Number(orderRow.change_amount),
+        qrisMeta: orderRow.qris_meta ? JSON.parse(orderRow.qris_meta) : null,
+        status: orderRow.status,
+        returHistory: Array.isArray(returRows) ? returRows.map((rh) => ({
+          lineId: rh.line_id,
+          title: rh.title,
+          price: Number(rh.price),
+          qty: rh.qty,
+          lineTotal: Number(rh.line_total),
+          reason: rh.reason || "",
+          returAt: rh.retur_at ? new Date(rh.retur_at).toISOString() : ""
+        })) : [],
+        createdAt: orderRow.created_at.toISOString(),
+        paidAt: orderRow.paid_at.toISOString()
+      });
+    }
+    return orders;
+  } catch (err) {
+    console.error("Error getting orders by date range from DB:", err);
+    return [];
+  }
+}
+
+async function getOrdersByDateRange(app, { from, to }) {
+  if (db.isConnected()) {
+    return getOrdersByDateRangeDB(from, to);
+  }
+  return getOrdersByDateRangeJSON(app, from, to);
+}
+
 module.exports = {
   getTodayOrders,
   createOrder,
   returOrderItem,
   getOrderById,
-  getTodayOrdersSummary
+  getTodayOrdersSummary,
+  getOrdersByDateRange
 };

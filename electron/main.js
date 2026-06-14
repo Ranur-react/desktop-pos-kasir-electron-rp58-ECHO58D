@@ -25,7 +25,8 @@ const {
   createOrder,
   returOrderItem,
   getOrderById,
-  getTodayOrdersSummary
+  getTodayOrdersSummary,
+  getOrdersByDateRange
 } = require("./services/orderStorage");
 const {
   generateQris,
@@ -274,11 +275,16 @@ ipcMain.handle("pos:add-transaction", async (_, payload) => {
 
   if (autoPrint) {
     try {
-      await printReceipt(tx);
-      printResult = {
-        success: true,
-        message: "Struk tercetak dan laci kas dibuka."
-      };
+      const { printerEnabled } = getRuntimeConfig();
+      if (!printerEnabled) {
+        printResult = { success: false, message: "Printer dinonaktifkan di pengaturan." };
+      } else {
+        await printReceipt(tx);
+        printResult = {
+          success: true,
+          message: "Struk tercetak dan laci kas dibuka."
+        };
+      }
     } catch (error) {
       printResult = {
         success: false,
@@ -298,6 +304,11 @@ ipcMain.handle("pos:add-transaction", async (_, payload) => {
 ipcMain.handle("pos:print-last", async () => {
   ensurePermission("print_receipt");
 
+  const { printerEnabled } = getRuntimeConfig();
+  if (!printerEnabled) {
+    return { success: false, message: "Printer dinonaktifkan di pengaturan." };
+  }
+
   const latest = await getLatestTransaction(app);
   if (!latest) {
     throw new Error("Belum ada transaksi hari ini untuk dicetak.");
@@ -313,6 +324,11 @@ ipcMain.handle("pos:print-last", async () => {
 
 ipcMain.handle("pos:open-drawer", async () => {
   ensurePermission("open_drawer");
+
+  const { drawerEnabled } = getRuntimeConfig();
+  if (!drawerEnabled) {
+    return { success: false, message: "Cash drawer dinonaktifkan di pengaturan." };
+  }
 
   await openCashDrawer();
   return {
@@ -367,8 +383,13 @@ ipcMain.handle("order:create", async (_, payload) => {
 
   let printResult = { success: false, message: "" };
   try {
-    await printOrderReceipt(order);
-    printResult = { success: true, message: "Struk order tercetak." };
+    const { printerEnabled } = getRuntimeConfig();
+    if (!printerEnabled) {
+      printResult = { success: false, message: "Printer dinonaktifkan di pengaturan." };
+    } else {
+      await printOrderReceipt(order);
+      printResult = { success: true, message: "Struk order tercetak." };
+    }
   } catch (err) {
     printResult = { success: false, message: err.message };
   }
@@ -416,6 +437,19 @@ ipcMain.handle("order:get-by-id", async (_, orderId) => {
   const order = await getOrderById(app, orderId);
   if (!order) throw new Error("Order tidak ditemukan.");
   return order;
+});
+
+ipcMain.handle("order:get-by-date-range", async (_, payload) => {
+  ensurePermission("view_order");
+
+  const { from, to } = payload || {};
+  if (!from || !to) throw new Error("Tanggal dari/ke wajib diisi.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    throw new Error("Format tanggal tidak valid (YYYY-MM-DD).");
+  }
+  if (from > to) throw new Error("Tanggal awal tidak boleh lebih besar dari tanggal akhir.");
+
+  return getOrdersByDateRange(app, { from, to });
 });
 
 ipcMain.handle("catalog:get", async () => {
@@ -687,7 +721,9 @@ ipcMain.handle("store:get-config", async () => {
     printerCharWidth: cfg.printerCharWidth,
     qrisStaticContent: cfg.qrisStaticContent,
     envPath,
-    hasLogo: Boolean(cfg.storeLogoPath && fs.existsSync(cfg.storeLogoPath))
+    hasLogo: Boolean(cfg.storeLogoPath && fs.existsSync(cfg.storeLogoPath)),
+    printerEnabled: cfg.printerEnabled,
+    drawerEnabled: cfg.drawerEnabled
   };
 });
 
@@ -700,7 +736,9 @@ ipcMain.handle("store:save-config", async (_, payload) => {
     storeWa: "STORE_WA",
     printerCharWidth: "PRINTER_CHAR_WIDTH",
     qrisStaticContent: "QRIS_STATIC_CONTENT",
-    storeLogoPath: "STORE_LOGO_PATH"
+    storeLogoPath: "STORE_LOGO_PATH",
+    printerEnabled: "PRINTER_ENABLED",
+    drawerEnabled: "DRAWER_ENABLED"
   };
   for (const [field, envKey] of Object.entries(fieldMap)) {
     if (payload && Object.prototype.hasOwnProperty.call(payload, field)) {
@@ -775,6 +813,20 @@ ipcMain.handle("store:pick-folder", async () => {
   });
   if (result.canceled || result.filePaths.length === 0) return { canceled: true };
   return { canceled: false, folderPath: result.filePaths[0] };
+});
+
+ipcMain.handle("printer:get-toggle-config", async () => {
+  ensurePermission("manage_printer");
+  const cfg = getRuntimeConfig();
+  return { printerEnabled: cfg.printerEnabled, drawerEnabled: cfg.drawerEnabled };
+});
+
+ipcMain.handle("printer:set-toggle-config", async (_, payload) => {
+  ensurePermission("manage_printer");
+  const { printerEnabled, drawerEnabled } = payload || {};
+  if (typeof printerEnabled === "boolean") setEnvKey("PRINTER_ENABLED", String(printerEnabled));
+  if (typeof drawerEnabled === "boolean") setEnvKey("DRAWER_ENABLED", String(drawerEnabled));
+  return { success: true };
 });
 
 ipcMain.handle("qris:preview-content", async (_, content) => {
