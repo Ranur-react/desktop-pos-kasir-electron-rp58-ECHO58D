@@ -37,8 +37,10 @@ const { readCatalogFromAssets } = require("./services/catalogCsv");
 const db = require("./services/dbConnection");
 const accountAuth = require("./services/accountAuth");
 const migration = require("./services/migration");
+const licenseService = require("./services/licenseService");
 
 let activeSessionUserId = null;
+let hasCheckedLicenseAtStartup = false;
 
 function getSessionUser() {
   if (!activeSessionUserId) return null;
@@ -58,6 +60,26 @@ function ensurePermission(permission) {
   if (!accountAuth.hasPermission(sessionUser, permission)) {
     throw new Error("Akses ditolak. Role akun tidak memiliki izin untuk fitur ini.");
   }
+}
+
+async function ensureLicenseAllowsWrite() {
+  const licenseState = await licenseService.getLicenseState(app, {
+    forceRefresh: !hasCheckedLicenseAtStartup
+  });
+  hasCheckedLicenseAtStartup = true;
+  if (licenseState.isWriteEnabled) {
+    return;
+  }
+
+  const contact = licenseState.developerContact || {};
+  const contactBits = [];
+  if (contact.email) contactBits.push(`Email: ${contact.email}`);
+  if (contact.whatsapp) contactBits.push(`WhatsApp: ${contact.whatsapp}`);
+
+  const baseMessage = licenseState.readOnlyMessage || "Lisensi aplikasi tidak aktif.";
+  const reason = licenseState.reason ? ` ${licenseState.reason}` : "";
+  const contactMsg = contactBits.length ? ` Hubungi developer: ${contactBits.join(" | ")}` : "";
+  throw new Error(`${baseMessage}${reason}${contactMsg}`);
 }
 
 function createWindow() {
@@ -249,6 +271,7 @@ ipcMain.handle("pos:get-bootstrap", async () => {
 });
 
 ipcMain.handle("pos:add-transaction", async (_, payload) => {
+  await ensureLicenseAllowsWrite();
   ensurePermission("create_transaction");
 
   const { type, nominal, description, autoPrint = true } = payload || {};
@@ -349,6 +372,7 @@ ipcMain.handle("order:get-today", async () => {
 });
 
 ipcMain.handle("order:create", async (_, payload) => {
+  await ensureLicenseAllowsWrite();
   ensurePermission("create_order");
 
   const { items, paymentMethod, cashGiven, qrisMeta } = payload || {};
@@ -408,6 +432,7 @@ ipcMain.handle("qris:image", async () => {
 });
 
 ipcMain.handle("qris:print", async (_, payload) => {
+  await ensureLicenseAllowsWrite();
   ensurePermission("create_order");
 
   const { amount } = payload || {};
@@ -420,6 +445,7 @@ ipcMain.handle("qris:print", async (_, payload) => {
 });
 
 ipcMain.handle("order:retur", async (_, payload) => {
+  await ensureLicenseAllowsWrite();
   ensurePermission("retur_order");
 
   const { orderId, lineId, reason } = payload || {};
@@ -475,11 +501,13 @@ ipcMain.handle("db:get-config", async () => {
 });
 
 ipcMain.handle("db:test-connection", async (_, config) => {
+  await ensureLicenseAllowsWrite();
   ensurePermission("manage_database");
   return db.testConnection(config);
 });
 
 ipcMain.handle("db:save-config", async (_, config) => {
+  await ensureLicenseAllowsWrite();
   ensurePermission("manage_database");
 
   try {
@@ -510,6 +538,7 @@ ipcMain.handle("db:save-config", async (_, config) => {
 });
 
 ipcMain.handle("db:clear-config", async () => {
+  await ensureLicenseAllowsWrite();
   ensurePermission("manage_database");
 
   try {
@@ -531,6 +560,7 @@ ipcMain.handle("printer:list", async () => {
 });
 
 ipcMain.handle("printer:set-default", async (_, payload) => {
+  await ensureLicenseAllowsWrite();
   ensurePermission("manage_printer");
 
   const printerInterface = payload?.printerInterface;
@@ -588,6 +618,7 @@ ipcMain.handle("account:list", async () => {
 });
 
 ipcMain.handle("account:create", async (_, payload) => {
+  await ensureLicenseAllowsWrite();
   ensurePermission("manage_accounts");
 
   const account = accountAuth.createAccount(app, payload);
@@ -600,6 +631,7 @@ ipcMain.handle("account:create", async (_, payload) => {
 });
 
 ipcMain.handle("account:change-role", async (_, payload) => {
+  await ensureLicenseAllowsWrite();
   ensurePermission("manage_accounts");
 
   const account = accountAuth.changeRole(app, {
@@ -617,6 +649,7 @@ ipcMain.handle("account:change-role", async (_, payload) => {
 });
 
 ipcMain.handle("account:change-password", async (_, payload) => {
+  await ensureLicenseAllowsWrite();
   const actor = getSessionUser();
   if (!actor) {
     throw new Error("Silakan login terlebih dahulu.");
@@ -640,6 +673,7 @@ ipcMain.handle("account:change-password", async (_, payload) => {
 // ── Backup & Migration IPC ──
 
 ipcMain.handle("backup:create", async (_, reason = "manual") => {
+  await ensureLicenseAllowsWrite();
   ensurePermission("manage_database");
   const result = migration.createBackup(app, reason);
   return result;
@@ -674,6 +708,7 @@ ipcMain.handle("backup:list", async () => {
 });
 
 ipcMain.handle("backup:restore", async (_, backupPath) => {
+  await ensureLicenseAllowsWrite();
   ensurePermission("manage_database");
   
   if (!backupPath || typeof backupPath !== "string") {
@@ -728,6 +763,7 @@ ipcMain.handle("store:get-config", async () => {
 });
 
 ipcMain.handle("store:save-config", async (_, payload) => {
+  await ensureLicenseAllowsWrite();
   ensurePermission("manage_printer");
   const fieldMap = {
     storeTitle: "STORE_TITLE",
@@ -749,6 +785,7 @@ ipcMain.handle("store:save-config", async (_, payload) => {
 });
 
 ipcMain.handle("store:pick-image", async () => {
+  await ensureLicenseAllowsWrite();
   ensurePermission("manage_printer");
   const result = await dialog.showOpenDialog({
     title: "Pilih Gambar Logo",
@@ -760,6 +797,7 @@ ipcMain.handle("store:pick-image", async () => {
 });
 
 ipcMain.handle("store:pick-icon", async () => {
+  await ensureLicenseAllowsWrite();
   ensurePermission("manage_printer");
   const result = await dialog.showOpenDialog({
     title: "Pilih Icon Aplikasi (.ico atau .png)",
@@ -771,6 +809,7 @@ ipcMain.handle("store:pick-icon", async () => {
 });
 
 ipcMain.handle("store:set-app-icon", async (_, iconPath) => {
+  await ensureLicenseAllowsWrite();
   ensurePermission("manage_printer");
   const fs = require("fs");
   const { nativeImage } = require("electron");
@@ -795,6 +834,7 @@ ipcMain.handle("store:get-data-path", async () => {
 });
 
 ipcMain.handle("store:set-data-path", async (_, newPath) => {
+  await ensureLicenseAllowsWrite();
   ensurePermission("manage_database");
   if (!newPath || typeof newPath !== "string") {
     return { success: false, error: "Path tidak valid." };
@@ -806,6 +846,7 @@ ipcMain.handle("store:set-data-path", async (_, newPath) => {
 });
 
 ipcMain.handle("store:pick-folder", async () => {
+  await ensureLicenseAllowsWrite();
   ensurePermission("manage_database");
   const result = await dialog.showOpenDialog({
     title: "Pilih Folder Data POS",
@@ -822,6 +863,7 @@ ipcMain.handle("printer:get-toggle-config", async () => {
 });
 
 ipcMain.handle("printer:set-toggle-config", async (_, payload) => {
+  await ensureLicenseAllowsWrite();
   ensurePermission("manage_printer");
   const { printerEnabled, drawerEnabled } = payload || {};
   if (typeof printerEnabled === "boolean") setEnvKey("PRINTER_ENABLED", String(printerEnabled));
@@ -844,5 +886,19 @@ ipcMain.handle("qris:preview-content", async (_, content) => {
   } catch (err) {
     return { imageDataUrl: "", error: err.message };
   }
+});
+
+// ── License IPC ──
+
+ipcMain.handle("license:get-state", async () => {
+  return licenseService.getLicenseState(app, { forceRefresh: true });
+});
+
+ipcMain.handle("license:activate", async (_, code) => {
+  return licenseService.saveLicenseCode(app, code);
+});
+
+ipcMain.handle("license:set-readonly-message", async (_, message) => {
+  return licenseService.saveReadOnlyMessage(app, message);
 });
 

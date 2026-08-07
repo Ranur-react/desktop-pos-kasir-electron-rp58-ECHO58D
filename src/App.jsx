@@ -36,6 +36,13 @@ function isTypingElement(target) {
 
 export default function App() {
   const [tab, setTab] = useState("order");
+  const [licenseState, setLicenseState] = useState({
+    isWriteEnabled: false,
+    mode: "read-only",
+    reason: "Memeriksa status lisensi...",
+    readOnlyMessage: "",
+    developerContact: {}
+  });
 
   // -- Auth state --
   const [authLoading, setAuthLoading] = useState(true);
@@ -83,6 +90,7 @@ export default function App() {
 
   const nominalNumber = useMemo(() => Number(nominal), [nominal]);
   const permissions = authState.permissions || {};
+  const readOnlyByLicense = licenseState?.isWriteEnabled !== true;
 
   const nominalInputRef = useRef(null);
   const descInputRef = useRef(null);
@@ -94,11 +102,11 @@ export default function App() {
     if (can("view_order")) tabs.push({ key: "order", label: "Order Katalog", icon: "🛒" });
     if (can("view_kasir")) tabs.push({ key: "kasir", label: "Kasir Cash", icon: "💵" });
     if (can("manage_printer")) tabs.push({ key: "store", label: "Toko", icon: "⚙️" });
-    if (can("view_printer")) tabs.push({ key: "printer", label: "Printer", icon: "🖨" });
-    if (can("view_database")) tabs.push({ key: "database", label: "Database", icon: "🗄" });
-    if (can("manage_accounts")) tabs.push({ key: "accounts", label: "Akun", icon: "👥" });
+    if (!readOnlyByLicense && can("view_printer")) tabs.push({ key: "printer", label: "Printer", icon: "🖨" });
+    if (!readOnlyByLicense && can("view_database")) tabs.push({ key: "database", label: "Database", icon: "🗄" });
+    if (!readOnlyByLicense && can("manage_accounts")) tabs.push({ key: "accounts", label: "Akun", icon: "👥" });
     return tabs;
-  }, [permissions]);
+  }, [permissions, readOnlyByLicense]);
 
   useEffect(() => {
     if (availableTabs.length === 0) return;
@@ -147,9 +155,26 @@ export default function App() {
     return state;
   }
 
+  async function refreshLicenseState() {
+    try {
+      const next = await window.posApi.getLicenseState();
+      setLicenseState(next);
+      return next;
+    } catch (err) {
+      setLicenseState((prev) => ({
+        ...prev,
+        isWriteEnabled: false,
+        mode: "read-only",
+        reason: `Gagal memuat lisensi: ${err.message}`
+      }));
+      return null;
+    }
+  }
+
   useEffect(() => {
     async function init() {
       try {
+        await refreshLicenseState();
         const state = await refreshAuthState();
         if (state.user) {
           await loadDataForPermissions(state.permissions || {});
@@ -204,7 +229,7 @@ export default function App() {
 
     window.addEventListener("keydown", onGlobalKeydown);
     return () => window.removeEventListener("keydown", onGlobalKeydown);
-  }, [authState.user, tab, nominalNumber, description, loading, permissions]);
+  }, [authState.user, tab, nominalNumber, description, loading, permissions, readOnlyByLicense, licenseState?.readOnlyMessage]);
 
   async function handleSetupInitialAccount(e) {
     e.preventDefault();
@@ -287,6 +312,11 @@ export default function App() {
       return;
     }
 
+    if (readOnlyByLicense) {
+      setStatus(licenseState?.readOnlyMessage || "Lisensi tidak aktif. Mode baca saja.");
+      return;
+    }
+
     try {
       setLoading(true);
       setStatus("Menyimpan transaksi...");
@@ -311,6 +341,11 @@ export default function App() {
   async function printLastReceipt() {
     if (!can("print_receipt")) {
       setStatus("Akun tidak punya akses cetak struk.");
+      return;
+    }
+
+    if (readOnlyByLicense) {
+      setStatus(licenseState?.readOnlyMessage || "Lisensi tidak aktif. Mode baca saja.");
       return;
     }
 
@@ -391,8 +426,14 @@ export default function App() {
               </div>
             </div>
 
-            <button type="submit" className="btn btn-save">Simpan Akun Awal</button>
+            <button type="submit" className="btn btn-save" disabled={readOnlyByLicense}>Simpan Akun Awal</button>
           </form>
+
+          {readOnlyByLicense && (
+            <p className="small-text" style={{ color: "#b42318", marginTop: "8px" }}>
+              Setup akun dinonaktifkan saat license tidak aktif (mode read-only).
+            </p>
+          )}
 
           {authStatus && <div className="status">{authStatus}</div>}
         </section>
@@ -480,6 +521,18 @@ export default function App() {
         </div>
       </header>
 
+      {readOnlyByLicense && (
+        <section className="panel license-banner-panel">
+          <h3>Mode Read-Only</h3>
+          <p className="small-text" style={{ marginBottom: "6px" }}>
+            {licenseState?.readOnlyMessage || "Lisensi tidak aktif. Aplikasi dibatasi ke mode baca saja."}
+          </p>
+          <p className="small-text" style={{ marginBottom: 0 }}>
+            Status: {licenseState?.reason || "-"} | Hubungi developer: {licenseState?.developerContact?.email || "-"} | {licenseState?.developerContact?.whatsapp || "-"}
+          </p>
+        </section>
+      )}
+
       <nav className="tab-bar dashboard-nav panel">
         {availableTabs.map((item) => (
           <button
@@ -498,8 +551,8 @@ export default function App() {
           orders={orders}
           summary={orderSummary}
           onRefresh={loadOrders}
-          canCreateOrder={can("create_order")}
-          canRetur={can("retur_order")}
+          canCreateOrder={can("create_order") && !readOnlyByLicense}
+          canRetur={can("retur_order") && !readOnlyByLicense}
         />
       )}
 
@@ -524,7 +577,7 @@ export default function App() {
               placeholder="Contoh: 50000"
               value={nominal}
               onChange={(e) => setNominal(e.target.value)}
-              disabled={loading || !can("create_transaction")}
+              disabled={loading || !can("create_transaction") || readOnlyByLicense}
             />
 
             <label htmlFor="description">Deskripsi Transaksi</label>
@@ -535,21 +588,21 @@ export default function App() {
               placeholder="Contoh: Penjualan kopi"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              disabled={loading || !can("create_transaction")}
+              disabled={loading || !can("create_transaction") || readOnlyByLicense}
             />
 
             <div className="btn-row">
               <button
                 className="btn btn-in"
                 onClick={() => submitTransaction("in")}
-                disabled={loading || !can("create_transaction")}
+                disabled={loading || !can("create_transaction") || readOnlyByLicense}
               >
                 Uang Masuk
               </button>
               <button
                 className="btn btn-out"
                 onClick={() => submitTransaction("out")}
-                disabled={loading || !can("create_transaction")}
+                disabled={loading || !can("create_transaction") || readOnlyByLicense}
               >
                 Uang Keluar
               </button>
@@ -558,7 +611,7 @@ export default function App() {
             <button
               className="btn btn-print"
               onClick={printLastReceipt}
-              disabled={loading || !can("print_receipt")}
+              disabled={loading || !can("print_receipt") || readOnlyByLicense}
             >
               Cetak Struk &amp; Buka Laci
             </button>
@@ -607,7 +660,12 @@ export default function App() {
       )}
 
       {tab === "store" && can("manage_printer") && (
-        <StoreSettings onApplied={() => {}} />
+        <StoreSettings
+          onApplied={() => {}}
+          licenseState={licenseState}
+          onLicenseStateChanged={setLicenseState}
+          appReadOnly={readOnlyByLicense}
+        />
       )}
 
       {tab === "database" && can("view_database") && (
@@ -654,9 +712,15 @@ export default function App() {
                 <button type="button" className="btn btn-secondary" onClick={() => setShowPasswordModal(false)}>
                   Batal
                 </button>
-                <button type="submit" className="btn btn-save">Simpan Password</button>
+                <button type="submit" className="btn btn-save" disabled={readOnlyByLicense}>Simpan Password</button>
               </div>
             </form>
+
+            {readOnlyByLicense && (
+              <p className="small-text" style={{ color: "#b42318", marginTop: "8px" }}>
+                Ubah password dinonaktifkan saat mode read-only aktif.
+              </p>
+            )}
           </section>
         </div>
       )}

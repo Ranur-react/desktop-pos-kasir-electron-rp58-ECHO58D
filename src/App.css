@@ -1114,6 +1114,16 @@ th, td { text-align: left; border-bottom: 1px solid #e6ecf5; padding: 8px 7px; f
 }
 
 /* ── Store Settings ── */
+.license-banner-panel {
+  border: 1px solid #f5d0a4;
+  background: #fff8ed;
+}
+
+.license-banner-panel h3 {
+  margin-bottom: 6px;
+  color: #9a3412;
+}
+
 .store-settings-panel {
   display: grid;
   gap: 16px;
@@ -1154,6 +1164,11 @@ th, td { text-align: left; border-bottom: 1px solid #e6ecf5; padding: 8px 7px; f
 
 .store-tab-btn:hover { background: #eef2fb; }
 
+.store-tab-btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
 .store-tab-active {
   background: #1d4ed8 !important;
   color: #fff !important;
@@ -1163,6 +1178,25 @@ th, td { text-align: left; border-bottom: 1px solid #e6ecf5; padding: 8px 7px; f
 .store-section {
   display: grid;
   gap: 14px;
+}
+
+.license-readonly-alert {
+  border: 1px solid #f5d0a4;
+  background: #fff8ed;
+  color: #7c2d12;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.92rem;
+}
+
+.license-state-box {
+  border: 1px solid #dbe6ff;
+  background: #f6f9ff;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
 }
 
 .store-section h3 {

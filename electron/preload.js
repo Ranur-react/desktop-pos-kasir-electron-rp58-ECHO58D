@@ -58,5 +58,10 @@ contextBridge.exposeInMainWorld("posApi", {
   getDataPath: () => ipcRenderer.invoke("store:get-data-path"),
   setDataPath: (newPath) => ipcRenderer.invoke("store:set-data-path", newPath),
   pickDataFolder: () => ipcRenderer.invoke("store:pick-folder"),
-  previewQrisContent: (content) => ipcRenderer.invoke("qris:preview-content", content)
+  previewQrisContent: (content) => ipcRenderer.invoke("qris:preview-content", content),
+
+  // License
+  getLicenseState: () => ipcRenderer.invoke("license:get-state"),
+  activateLicense: (code) => ipcRenderer.invoke("license:activate", code),
+  setLicenseReadOnlyMessage: (message) => ipcRenderer.invoke("license:set-readonly-message", message)
 });

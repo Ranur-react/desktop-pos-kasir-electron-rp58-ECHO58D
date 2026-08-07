@@ -122,7 +122,7 @@ function BillPreview({ cfg, charWidth }) {
   );
 }
 
-export default function StoreSettings({ onApplied }) {
+export default function StoreSettings({ onApplied, licenseState, onLicenseStateChanged, appReadOnly = false }) {
   const [activeSection, setActiveSection] = useState("info");
 
   const [cfg, setCfg] = useState({
@@ -150,6 +150,11 @@ export default function StoreSettings({ onApplied }) {
   const [qrisLoading, setQrisLoading] = useState(false);
   const [qrisPrintLoading, setQrisPrintLoading] = useState(false);
 
+  const [licenseCodeInput, setLicenseCodeInput] = useState("");
+  const [readonlyMessageInput, setReadonlyMessageInput] = useState("");
+  const [licenseSaving, setLicenseSaving] = useState(false);
+  const [licenseRefreshing, setLicenseRefreshing] = useState(false);
+
   const qrisDebounceRef = useRef(null);
 
   function showStatus(msg, type = "ok") {
@@ -157,6 +162,17 @@ export default function StoreSettings({ onApplied }) {
     setStatusType(type);
     setTimeout(() => setStatus(""), 4000);
   }
+
+  useEffect(() => {
+    setLicenseCodeInput(licenseState?.enteredCode || "");
+    setReadonlyMessageInput(licenseState?.readOnlyMessage || "");
+  }, [licenseState]);
+
+  useEffect(() => {
+    if (appReadOnly && activeSection !== "license") {
+      setActiveSection("license");
+    }
+  }, [appReadOnly, activeSection]);
 
   async function loadConfig() {
     setLoading(true);
@@ -200,6 +216,54 @@ export default function StoreSettings({ onApplied }) {
 
   function handleChange(field, value) {
     setCfg((prev) => ({ ...prev, [field]: value }));
+  }
+
+  async function refreshLicenseState() {
+    setLicenseRefreshing(true);
+    try {
+      const state = await window.posApi.getLicenseState();
+      onLicenseStateChanged?.(state);
+      showStatus("Status lisensi diperbarui.", "ok");
+    } catch (err) {
+      showStatus(`Gagal memuat lisensi: ${err.message}`, "err");
+    } finally {
+      setLicenseRefreshing(false);
+    }
+  }
+
+  async function activateLicense() {
+    if (!licenseCodeInput.trim()) {
+      showStatus("Kode lisensi wajib diisi.", "err");
+      return;
+    }
+
+    setLicenseSaving(true);
+    try {
+      const state = await window.posApi.activateLicense(licenseCodeInput.trim());
+      onLicenseStateChanged?.(state);
+      if (state.isWriteEnabled) {
+        showStatus("Lisensi aktif. Semua fitur sudah terbuka.", "ok");
+      } else {
+        showStatus(`Lisensi belum aktif: ${state.reason}`, "err");
+      }
+    } catch (err) {
+      showStatus(`Gagal menyimpan lisensi: ${err.message}`, "err");
+    } finally {
+      setLicenseSaving(false);
+    }
+  }
+
+  async function saveReadonlyMessage() {
+    setLicenseSaving(true);
+    try {
+      const state = await window.posApi.setLicenseReadOnlyMessage(readonlyMessageInput);
+      onLicenseStateChanged?.(state);
+      showStatus("Pesan read-only berhasil disimpan.", "ok");
+    } catch (err) {
+      showStatus(`Gagal simpan pesan read-only: ${err.message}`, "err");
+    } finally {
+      setLicenseSaving(false);
+    }
   }
 
   async function saveStoreInfo() {
@@ -331,6 +395,7 @@ export default function StoreSettings({ onApplied }) {
   }
 
   const sections = [
+    { key: "license", label: "🔐 License" },
     { key: "info", label: "🏪 Info Toko" },
     { key: "logo", label: "🖼 Logo & Icon" },
     { key: "qris", label: "💳 QRIS" },
@@ -353,12 +418,91 @@ export default function StoreSettings({ onApplied }) {
           <button
             key={s.key}
             className={`store-tab-btn ${activeSection === s.key ? "store-tab-active" : ""}`}
+            disabled={appReadOnly && s.key !== "license"}
             onClick={() => setActiveSection(s.key)}
           >
             {s.label}
           </button>
         ))}
       </div>
+
+      {appReadOnly && (
+        <div className="license-readonly-alert">
+          <strong>Mode Read-Only aktif.</strong> {licenseState?.readOnlyMessage || "Lisensi tidak aktif."}
+          <div className="small-text" style={{ marginTop: "6px" }}>
+            Hubungi developer: {licenseState?.developerContact?.email || "-"} | {licenseState?.developerContact?.whatsapp || "-"}
+          </div>
+        </div>
+      )}
+
+      {/* ──── LICENSE ──── */}
+      {activeSection === "license" && (
+        <div className="store-section">
+          <h3>Aktivasi License</h3>
+          <p className="small-text">
+            Masukkan kode license dari developer. Format daftar license: <code>KODE:status[:YYYY-MM-DD]</code>.
+          </p>
+
+          <div className="database-form-group">
+            <label>Kode License (LICENSE_CODE)</label>
+            <input
+              value={licenseCodeInput}
+              onChange={(e) => setLicenseCodeInput(e.target.value)}
+              placeholder="Contoh: CLirU4Ur33RN"
+              disabled={licenseSaving}
+            />
+          </div>
+
+          <div className="store-actions-row">
+            <button className="btn btn-save" onClick={activateLicense} disabled={licenseSaving || !licenseCodeInput.trim()}>
+              {licenseSaving ? "Menyimpan..." : "Simpan & Validasi License"}
+            </button>
+            <button className="btn btn-secondary" onClick={refreshLicenseState} disabled={licenseRefreshing || licenseSaving}>
+              {licenseRefreshing ? "Memuat..." : "Refresh Status"}
+            </button>
+          </div>
+
+          <div className="license-state-box">
+            <div>
+              <strong>Status:</strong>{" "}
+              {licenseState?.isWriteEnabled ? "ACTIVE (Full Feature)" : "NOT ACTIVE (Read-Only)"}
+            </div>
+            <div><strong>Alasan:</strong> {licenseState?.reason || "-"}</div>
+            <div><strong>Kode Saat Ini:</strong> <span className="mono">{licenseState?.enteredCode || "-"}</span></div>
+            <div><strong>Status di Daftar:</strong> {licenseState?.listed?.status || "-"}</div>
+            <div><strong>Berlaku Sampai:</strong> {licenseState?.listed?.expiresAt || "-"}</div>
+          </div>
+
+          <hr className="store-divider" />
+
+          <h3>Pesan Mode Read-Only</h3>
+          <p className="small-text">
+            Pesan ini tampil ketika license tidak aktif. Kontak developer default:
+            <br />
+            Email: <strong>{licenseState?.developerContact?.email || "rahmatnur844@gmail.com"}</strong>
+            <br />
+            WhatsApp: <strong>{licenseState?.developerContact?.whatsapp || "+6283182647716"}</strong>
+          </p>
+
+          <div className="database-form-group">
+            <label>Pesan Read-Only (LICENSE_READONLY_MESSAGE)</label>
+            <textarea
+              className="qris-input"
+              rows={3}
+              value={readonlyMessageInput}
+              onChange={(e) => setReadonlyMessageInput(e.target.value)}
+              placeholder="Contoh: License tidak aktif, hubungi developer untuk aktivasi"
+              disabled={licenseSaving}
+            />
+          </div>
+
+          <div className="store-actions-row">
+            <button className="btn btn-save" onClick={saveReadonlyMessage} disabled={licenseSaving}>
+              Simpan Pesan Read-Only
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ──── INFO TOKO ──── */}
       {activeSection === "info" && (

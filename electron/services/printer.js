@@ -250,11 +250,11 @@ async function printOrderReceipt(order) {
 
   await printStoreHeader(printer, cfg);
   printer.alignCenter();
-  printer.println("Custom Order Receipt");
+  printer.println("Struk Pembayaran");
   printer.drawLine();
 
   printer.alignLeft();
-  printer.println(`Order  : ${order.id}`);
+  printer.println(`Kode Pesanan  : ${order.id}`);
   printer.println(`Waktu  : ${formatDate(order.createdAt)}`);
   printer.println(`Bayar  : ${order.paymentMethod === "cash" ? "CASH" : "QRIS"}`);
   printer.drawLine();
