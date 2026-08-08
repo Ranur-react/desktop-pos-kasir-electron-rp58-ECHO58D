@@ -146,7 +146,10 @@ async function writeOrderToDB(order) {
 // Public functions
 async function getTodayOrders(app) {
   if (db.isConnected()) {
-    return await readOrdersFromDB();
+    const fromDb = await readOrdersFromDB();
+    if (Array.isArray(fromDb) && fromDb.length > 0) {
+      return fromDb;
+    }
   }
   return readOrders(app).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
@@ -179,14 +182,16 @@ function createOrder(app, { items, paymentMethod, cashGiven, qrisMeta }) {
     paidAt: now.toISOString()
   };
 
+  // Always keep JSON history as local backup.
+  const orders = readOrders(app);
+  orders.push(order);
+  writeOrders(app, orders);
+
+  // Mirror to SQL when available.
   if (db.isConnected()) {
     writeOrderToDB(order).catch((err) => {
       console.error("Async DB write order failed:", err);
     });
-  } else {
-    const orders = readOrders(app);
-    orders.push(order);
-    writeOrders(app, orders);
   }
 
   return order;
@@ -194,7 +199,7 @@ function createOrder(app, { items, paymentMethod, cashGiven, qrisMeta }) {
 
 function returOrderItem(app, { orderId, lineId, reason }) {
   if (db.isConnected()) {
-    return returOrderItemDB(orderId, lineId, reason);
+    return returOrderItemDB(orderId, lineId, reason, app);
   }
 
   const orders = readOrders(app);
@@ -236,9 +241,100 @@ function returOrderItem(app, { orderId, lineId, reason }) {
   return order;
 }
 
-async function returOrderItemDB(orderId, lineId, reason) {
+async function returOrderItemDB(orderId, lineId, reason, app) {
   try {
-    throw new Error("Retur order via database belum diimplementasi. Gunakan JSON file untuk saat ini.");
+    const pool = await db.getPool();
+    if (!pool) {
+      throw new Error("Koneksi database tidak tersedia.");
+    }
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const [orderRows] = await conn.execute("SELECT * FROM orders WHERE id = ? LIMIT 1", [orderId]);
+      if (!orderRows.length) {
+        throw new Error("Order tidak ditemukan.");
+      }
+
+      const [lineRows] = await conn.execute("SELECT * FROM order_items WHERE line_id = ? LIMIT 1", [lineId]);
+      if (!lineRows.length) {
+        throw new Error("Item tidak ditemukan dalam order.");
+      }
+
+      const line = lineRows[0];
+      if (line.retur_status === "returned") {
+        throw new Error("Item ini sudah diretur sebelumnya.");
+      }
+
+      await conn.execute("UPDATE order_items SET retur_status = 'returned' WHERE line_id = ?", [lineId]);
+
+      const [remainingRows] = await conn.execute(
+        "SELECT COALESCE(SUM(line_total), 0) AS subtotal FROM order_items WHERE order_id = ? AND (retur_status IS NULL OR retur_status <> 'returned')",
+        [orderId]
+      );
+      const nextSubtotal = Number(remainingRows[0]?.subtotal || 0);
+
+      const [countRows] = await conn.execute(
+        "SELECT COUNT(*) AS total, SUM(CASE WHEN retur_status = 'returned' THEN 1 ELSE 0 END) AS returned_count FROM order_items WHERE order_id = ?",
+        [orderId]
+      );
+      const totalLines = Number(countRows[0]?.total || 0);
+      const returnedCount = Number(countRows[0]?.returned_count || 0);
+      const allReturned = totalLines > 0 && returnedCount === totalLines;
+
+      const order = orderRows[0];
+      const nextStatus = allReturned ? "fully-returned" : "partial-return";
+      const nextChange = order.payment_method === "cash" ? Number(order.cash_given || 0) - nextSubtotal : Number(order.change_amount || 0);
+
+      await conn.execute(
+        "UPDATE orders SET subtotal = ?, change_amount = ?, status = ? WHERE id = ?",
+        [nextSubtotal, nextChange, nextStatus, orderId]
+      );
+
+      await conn.commit();
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+
+    // Mirror retur to JSON backup.
+    const jsonOrders = readOrders(app);
+    const targetOrder = jsonOrders.find((o) => o.id === orderId);
+    if (targetOrder) {
+      const targetLine = targetOrder.items.find((l) => l.lineId === lineId);
+      if (targetLine && targetLine.returStatus !== "returned") {
+        targetLine.returStatus = "returned";
+        targetOrder.returHistory = targetOrder.returHistory || [];
+        targetOrder.returHistory.push({
+          lineId,
+          title: targetLine.title,
+          price: targetLine.price,
+          qty: targetLine.qty,
+          lineTotal: targetLine.lineTotal,
+          reason: reason || "",
+          returAt: new Date().toISOString()
+        });
+        targetOrder.subtotal = targetOrder.items
+          .filter((i) => i.returStatus !== "returned")
+          .reduce((s, i) => s + i.lineTotal, 0);
+        if (targetOrder.paymentMethod === "cash" && targetOrder.cashGiven != null) {
+          targetOrder.change = Number(targetOrder.cashGiven) - Number(targetOrder.subtotal || 0);
+        }
+        targetOrder.status = targetOrder.items.every((i) => i.returStatus === "returned")
+          ? "fully-returned"
+          : "partial-return";
+        writeOrders(app, jsonOrders);
+      }
+    }
+
+    const latest = await getOrderByIdDB(orderId);
+    if (!latest) {
+      throw new Error("Order retur tidak ditemukan setelah pembaruan.");
+    }
+    return latest;
   } catch (err) {
     throw err;
   }
@@ -246,7 +342,8 @@ async function returOrderItemDB(orderId, lineId, reason) {
 
 async function getOrderById(app, orderId) {
   if (db.isConnected()) {
-    return getOrderByIdDB(orderId);
+    const fromDb = await getOrderByIdDB(orderId);
+    if (fromDb) return fromDb;
   }
   return readOrders(app).find((o) => o.id === orderId) || null;
 }
@@ -300,7 +397,10 @@ async function getOrderByIdDB(orderId) {
 
 async function getTodayOrdersSummary(app) {
   if (db.isConnected()) {
-    return await getTodayOrdersSummaryDB();
+    const fromDb = await getTodayOrdersSummaryDB();
+    if (Number(fromDb.totalSales || 0) > 0 || Number(fromDb.totalOrders || 0) > 0) {
+      return fromDb;
+    }
   }
 
   const orders = readOrders(app);
@@ -455,7 +555,10 @@ async function getOrdersByDateRangeDB(from, to) {
 
 async function getOrdersByDateRange(app, { from, to }) {
   if (db.isConnected()) {
-    return getOrdersByDateRangeDB(from, to);
+    const fromDb = await getOrdersByDateRangeDB(from, to);
+    if (Array.isArray(fromDb) && fromDb.length > 0) {
+      return fromDb;
+    }
   }
   return getOrdersByDateRangeJSON(app, from, to);
 }

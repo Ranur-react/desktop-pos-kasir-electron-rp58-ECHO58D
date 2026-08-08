@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { resolveDataDir } = require("./dataPath");
+const db = require("./dbConnection");
 
 // AES-128-ECB key: "opener" padded to 16 bytes
 const AES_KEY = Buffer.alloc(16);
@@ -32,6 +33,8 @@ const SUPPORTED_ROLES = {
       view_order: true,
       create_order: true,
       retur_order: true,
+      view_product: true,
+      manage_product: true,
       view_kasir: true,
       create_transaction: true,
       print_receipt: true,
@@ -49,6 +52,8 @@ const SUPPORTED_ROLES = {
       view_order: true,
       create_order: true,
       retur_order: false,
+      view_product: false,
+      manage_product: false,
       view_kasir: true,
       create_transaction: true,
       print_receipt: true,
@@ -94,6 +99,84 @@ function readStore(app) {
 function writeStore(app, store) {
   const filePath = getAccountsFilePath(app);
   fs.writeFileSync(filePath, JSON.stringify(store, null, 2), "utf-8");
+}
+
+async function syncStoreToDatabase(app) {
+  if (!db.isConnected()) return;
+
+  const pool = await db.getPool();
+  if (!pool) return;
+
+  const store = readStore(app);
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+    await conn.execute("DELETE FROM accounts");
+
+    for (const account of store.accounts || []) {
+      await conn.execute(
+        `INSERT INTO accounts
+          (id, username, display_name, role, active, password_cipher, created_at, updated_at, last_login_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          account.id,
+          account.username,
+          account.displayName || null,
+          account.role,
+          account.active === false ? 0 : 1,
+          account.passwordCipher,
+          account.createdAt ? new Date(account.createdAt) : new Date(),
+          account.updatedAt ? new Date(account.updatedAt) : new Date(),
+          account.lastLoginAt ? new Date(account.lastLoginAt) : null
+        ]
+      );
+    }
+
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+function scheduleSyncToDatabase(app) {
+  if (!db.isConnected()) return;
+  syncStoreToDatabase(app).catch((err) => {
+    console.error("Gagal sinkron akun ke database:", err.message);
+  });
+}
+
+async function hydrateFromDatabase(app) {
+  if (!db.isConnected()) return;
+
+  const pool = await db.getPool();
+  if (!pool) return;
+
+  const [rows] = await pool.execute("SELECT * FROM accounts ORDER BY username ASC");
+  if (!rows.length) return;
+
+  const local = readStore(app);
+  if (Array.isArray(local.accounts) && local.accounts.length > 0) {
+    // Keep local data and mirror it back to SQL if needed.
+    return;
+  }
+
+  const mapped = rows.map((row) => ({
+    id: row.id,
+    username: row.username,
+    displayName: row.display_name || row.username,
+    role: row.role,
+    active: Number(row.active) !== 0,
+    passwordCipher: row.password_cipher,
+    createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+    updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString(),
+    lastLoginAt: row.last_login_at ? new Date(row.last_login_at).toISOString() : null
+  }));
+
+  writeStore(app, { version: 1, accounts: mapped });
 }
 
 function normalizeUsername(value) {
@@ -194,6 +277,7 @@ function setupInitialAccount(app, payload) {
 
   store.accounts.push(account);
   writeStore(app, store);
+  scheduleSyncToDatabase(app);
   return account;
 }
 
@@ -219,6 +303,7 @@ function authenticate(app, payload) {
   account.lastLoginAt = new Date().toISOString();
   account.updatedAt = account.lastLoginAt;
   writeStore(app, store);
+  scheduleSyncToDatabase(app);
 
   return account;
 }
@@ -263,6 +348,7 @@ function createAccount(app, payload) {
 
   store.accounts.push(account);
   writeStore(app, store);
+  scheduleSyncToDatabase(app);
   return toPublicAccount(account);
 }
 
@@ -292,6 +378,7 @@ function changePassword(app, { actorAccount, targetAccountId, currentPassword, n
   target.updatedAt = new Date().toISOString();
 
   writeStore(app, store);
+  scheduleSyncToDatabase(app);
   return toPublicAccount(target);
 }
 
@@ -314,6 +401,7 @@ function changeRole(app, { targetAccountId, role }) {
   target.role = role;
   target.updatedAt = new Date().toISOString();
   writeStore(app, store);
+  scheduleSyncToDatabase(app);
 
   return toPublicAccount(target);
 }
@@ -342,7 +430,9 @@ module.exports = {
   getRolePermissions,
   hasPermission,
   isAuthEnabled,
+  hydrateFromDatabase,
   listAccounts,
   listRoleOptions,
+  syncStoreToDatabase,
   setupInitialAccount
 };

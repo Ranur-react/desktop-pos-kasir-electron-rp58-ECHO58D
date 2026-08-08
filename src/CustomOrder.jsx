@@ -21,6 +21,7 @@ const CART_PAGE_SIZE = 10;
 const ORDER_PAGE_SIZE = 8;
 
 export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder = true, canRetur = true }) {
+  const [catalogSource, setCatalogSource] = useState("csv");
   const [catalog, setCatalog] = useState({
     products: [],
     categories: [],
@@ -83,7 +84,7 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
 
   useEffect(() => {
     loadCatalog(false).catch(() => {});
-  }, []);
+  }, [catalogSource]);
 
   useEffect(() => {
     // Saat halaman order terbuka, fokus awal langsung ke pencarian produk.
@@ -93,20 +94,31 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
   async function loadCatalog(forceReload) {
     try {
       setCatalogLoading(true);
-      setStatus(forceReload ? "Memuat ulang katalog CSV..." : "Memuat katalog produk...");
+      if (catalogSource === "csv") {
+        setStatus(forceReload ? "Memuat ulang katalog CSV..." : "Memuat katalog CSV Shopify...");
+      } else {
+        setStatus("Memuat katalog produk manual...");
+      }
 
-      const data = forceReload
-        ? await window.posApi.reloadCatalog()
-        : await window.posApi.getCatalog();
+      const data = catalogSource === "csv"
+        ? (forceReload ? await window.posApi.reloadCatalog() : await window.posApi.getCatalog())
+        : await window.posApi.getManualCatalog();
 
       setCatalog(data);
-      if (data.products.length > 0 && !selectedProductId) {
-        setSelectedProductId(data.products[0].id);
+      if (data.products.length > 0) {
+        const currentExists = data.products.some((p) => p.id === selectedProductId);
+        if (!currentExists) {
+          setSelectedProductId(data.products[0].id);
+        }
+      } else {
+        setSelectedProductId(null);
       }
-      const sourceDirText = data.sourceDirectory ? ` (folder: ${data.sourceDirectory})` : "";
-      setStatus(
-        `${data.products.length} produk bersumber dari ${data.sourceFilesCount} file CSV`
-      );
+      if (catalogSource === "csv") {
+        const sourceDirText = data.sourceDirectory ? ` (folder: ${data.sourceDirectory})` : "";
+        setStatus(`${data.products.length} produk bersumber dari ${data.sourceFilesCount} file CSV${sourceDirText}`);
+      } else {
+        setStatus(`${data.products.length} produk manual aktif.`);
+      }
     } catch (err) {
       setStatus(`Gagal memuat katalog: ${err.message}`);
     } finally {
@@ -456,14 +468,32 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
       <section className="panel form-panel form-panel-inline order-catalog-panel">
         <div className="catalog-header-row">
           <div>
-            <h2>Katalog Produk (CSV Shopify)</h2>
+            <h2>POS Order Katalog</h2>
             <p className="small-text catalog-meta-text">
-              {catalog.sourceFilesCount || 0} file CSV • {catalog.products.length || 0} produk
+              {catalogSource === "csv" ? `${catalog.sourceFilesCount || 0} file CSV` : "Produk Manual"} • {catalog.products.length || 0} produk
             </p>
           </div>
-          <button className="btn btn-secondary" onClick={() => loadCatalog(true)} disabled={catalogLoading}>
-            {catalogLoading ? "Memuat..." : "Reload CSV"}
-          </button>
+          <div className="variant-actions">
+            <button
+              className={`category-pill ${catalogSource === "manual" ? "active" : ""}`}
+              onClick={() => setCatalogSource("manual")}
+              disabled={catalogLoading}
+            >
+              Produk Manual
+            </button>
+            <button
+              className={`category-pill ${catalogSource === "csv" ? "active" : ""}`}
+              onClick={() => setCatalogSource("csv")}
+              disabled={catalogLoading}
+            >
+              Katalog Shopify (CSV)
+            </button>
+            {catalogSource === "csv" && (
+              <button className="btn btn-secondary" onClick={() => loadCatalog(true)} disabled={catalogLoading}>
+                {catalogLoading ? "Memuat..." : "Reload CSV"}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="catalog-toolbar">

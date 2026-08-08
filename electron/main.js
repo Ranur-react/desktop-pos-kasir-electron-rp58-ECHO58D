@@ -34,6 +34,7 @@ const {
   makeExternalId
 } = require("./services/dokuQris");
 const { readCatalogFromAssets } = require("./services/catalogCsv");
+const manualCatalog = require("./services/manualCatalog");
 const db = require("./services/dbConnection");
 const accountAuth = require("./services/accountAuth");
 const migration = require("./services/migration");
@@ -177,6 +178,19 @@ async function runStartupSequence() {
   // 3. Initialize database
   console.log("[POS] Step 3: Initializing database...");
   await initializeDatabase();
+
+  // 3b. Hydrate local stores from SQL when local files are empty
+  if (db.isConnected()) {
+    try {
+      await accountAuth.hydrateFromDatabase(app);
+      await manualCatalog.hydrateFromDatabase(app);
+      // Keep SQL updated from local source when local has data.
+      await accountAuth.syncStoreToDatabase(app);
+      await manualCatalog.syncAppStoreToDatabase(app);
+    } catch (err) {
+      console.warn("[POS] Hydration/sync warning:", err.message);
+    }
+  }
   
   // 4. Validate critical data
   console.log("[POS] Step 4: Validating critical data...");
@@ -449,7 +463,7 @@ ipcMain.handle("order:retur", async (_, payload) => {
   ensurePermission("retur_order");
 
   const { orderId, lineId, reason } = payload || {};
-  const order = returOrderItem(app, { orderId, lineId, reason });
+  const order = await returOrderItem(app, { orderId, lineId, reason });
   return {
     order,
     orders: await getTodayOrders(app),
@@ -488,6 +502,85 @@ ipcMain.handle("catalog:reload", async () => {
   return readCatalogFromAssets(app, { forceReload: true });
 });
 
+ipcMain.handle("catalog:get-manual", async () => {
+  ensurePermission("view_order");
+  return manualCatalog.getManualCatalog(app);
+});
+
+ipcMain.handle("catalog:get-combined", async () => {
+  ensurePermission("view_order");
+  const csv = await readCatalogFromAssets(app, { forceReload: false });
+  const manual = await manualCatalog.getManualCatalog(app);
+  const products = [
+    ...(manual.products || []).map((p) => ({ ...p, sourceType: "manual" })),
+    ...(csv.products || []).map((p) => ({ ...p, sourceType: "csv" }))
+  ];
+
+  const categories = [...new Set(products.map((p) => p.category).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b, "id")
+  );
+
+  return {
+    products,
+    categories,
+    sourceFilesCount: (csv.sourceFilesCount || 0) + 1,
+    loadedAt: new Date().toISOString(),
+    sourceDirectory: "manual+csv"
+  };
+});
+
+ipcMain.handle("manual-product:list", async () => {
+  ensurePermission("view_product");
+  return manualCatalog.getManualCatalog(app);
+});
+
+ipcMain.handle("manual-product:create", async (_, payload) => {
+  await ensureLicenseAllowsWrite();
+  ensurePermission("manage_product");
+  const product = await manualCatalog.createManualProduct(app, payload || {});
+  return {
+    success: true,
+    message: "Produk manual berhasil ditambahkan.",
+    product,
+    catalog: await manualCatalog.getManualCatalog(app)
+  };
+});
+
+ipcMain.handle("manual-product:update", async (_, payload) => {
+  await ensureLicenseAllowsWrite();
+  ensurePermission("manage_product");
+  const product = await manualCatalog.updateManualProduct(app, payload || {});
+  return {
+    success: true,
+    message: "Produk manual berhasil diperbarui.",
+    product,
+    catalog: await manualCatalog.getManualCatalog(app)
+  };
+});
+
+ipcMain.handle("manual-product:delete", async (_, id) => {
+  await ensureLicenseAllowsWrite();
+  ensurePermission("manage_product");
+  await manualCatalog.deleteManualProduct(app, id);
+  return {
+    success: true,
+    message: "Produk manual berhasil dihapus.",
+    catalog: await manualCatalog.getManualCatalog(app)
+  };
+});
+
+ipcMain.handle("manual-product:delete-many", async (_, ids) => {
+  await ensureLicenseAllowsWrite();
+  ensurePermission("manage_product");
+  const result = await manualCatalog.deleteManyManualProducts(app, ids || []);
+  return {
+    success: true,
+    message: `${result.deleted || 0} produk berhasil dihapus.`,
+    deleted: result.deleted || 0,
+    catalog: await manualCatalog.getManualCatalog(app)
+  };
+});
+
 // ── Database Configuration IPC ──
 
 ipcMain.handle("db:get-config", async () => {
@@ -518,6 +611,15 @@ ipcMain.handle("db:save-config", async (_, config) => {
     const result = await db.initializeConnection(app, config);
     
     if (result.success) {
+      try {
+        await accountAuth.hydrateFromDatabase(app);
+        await manualCatalog.hydrateFromDatabase(app);
+        await accountAuth.syncStoreToDatabase(app);
+        await manualCatalog.syncAppStoreToDatabase(app);
+      } catch (syncErr) {
+        console.warn("[POS] DB sync warning after save-config:", syncErr.message);
+      }
+
       return {
         success: true,
         config,

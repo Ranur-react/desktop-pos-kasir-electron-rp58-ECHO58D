@@ -97,7 +97,10 @@ async function writeTransactionsToDB(transaction) {
 // Public functions
 async function getTodayTransactions(app) {
   if (db.isConnected()) {
-    return await readTransactionsFromDB();
+    const fromDb = await readTransactionsFromDB();
+    if (Array.isArray(fromDb) && fromDb.length > 0) {
+      return fromDb;
+    }
   }
   return readTransactions(app).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
@@ -113,16 +116,16 @@ function addTransaction(app, input) {
     createdAt: now.toISOString()
   };
 
+  // Always keep JSON history as local backup.
+  const transactions = readTransactions(app);
+  transactions.push(tx);
+  writeTransactions(app, transactions);
+
+  // Mirror to SQL when available.
   if (db.isConnected()) {
-    // Write to DB asynchronously without blocking
     writeTransactionsToDB(tx).catch((err) => {
       console.error("Async DB write failed:", err);
     });
-  } else {
-    // Write to JSON
-    const transactions = readTransactions(app);
-    transactions.push(tx);
-    writeTransactions(app, transactions);
   }
 
   return tx;
@@ -130,7 +133,10 @@ function addTransaction(app, input) {
 
 async function getTodaySummary(app) {
   if (db.isConnected()) {
-    return await getTodaySummaryFromDB();
+    const fromDb = await getTodaySummaryFromDB();
+    if (Number(fromDb.totalIn || 0) !== 0 || Number(fromDb.totalOut || 0) !== 0) {
+      return fromDb;
+    }
   }
 
   const transactions = readTransactions(app);
@@ -185,7 +191,8 @@ async function getTodaySummaryFromDB() {
 
 async function getLatestTransaction(app) {
   if (db.isConnected()) {
-    return await getLatestTransactionFromDB();
+    const latest = await getLatestTransactionFromDB();
+    if (latest) return latest;
   }
 
   const transactions = readTransactions(app);

@@ -1839,3 +1839,34 @@ table th {
     justify-content: center;
   }
 }
+
+.product-mgmt-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.product-mgmt-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.1fr) minmax(480px, 1.5fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.product-mgmt-grid-single {
+  grid-template-columns: 1fr;
+}
+
+.product-form-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.product-form-panel .custom-order-form {
+  max-width: none;
+}
+
+@media (max-width: 1024px) {
+  .product-mgmt-grid {
+    grid-template-columns: 1fr;
+  }
+}

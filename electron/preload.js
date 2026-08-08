@@ -20,6 +20,15 @@ contextBridge.exposeInMainWorld("posApi", {
   // Catalog CSV
   getCatalog: () => ipcRenderer.invoke("catalog:get"),
   reloadCatalog: () => ipcRenderer.invoke("catalog:reload"),
+  getManualCatalog: () => ipcRenderer.invoke("catalog:get-manual"),
+  getCombinedCatalog: () => ipcRenderer.invoke("catalog:get-combined"),
+
+  // Manual Product Management
+  listManualProducts: () => ipcRenderer.invoke("manual-product:list"),
+  createManualProduct: (payload) => ipcRenderer.invoke("manual-product:create", payload),
+  updateManualProduct: (payload) => ipcRenderer.invoke("manual-product:update", payload),
+  deleteManualProduct: (id) => ipcRenderer.invoke("manual-product:delete", id),
+  deleteManyManualProducts: (ids) => ipcRenderer.invoke("manual-product:delete-many", ids),
 
   // Database Configuration
   getDatabaseConfig: () => ipcRenderer.invoke("db:get-config"),

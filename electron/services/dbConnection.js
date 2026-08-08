@@ -132,6 +132,48 @@ async function createTables(connection) {
       FOREIGN KEY (product_id) REFERENCES catalog_products(id) ON DELETE CASCADE,
       INDEX idx_product_id (product_id),
       INDEX idx_sku (sku)
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS accounts (
+      id VARCHAR(80) PRIMARY KEY,
+      username VARCHAR(120) NOT NULL UNIQUE,
+      display_name VARCHAR(255),
+      role VARCHAR(50) NOT NULL,
+      active TINYINT(1) DEFAULT 1,
+      password_cipher TEXT NOT NULL,
+      created_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL,
+      last_login_at DATETIME NULL,
+      INDEX idx_role (role)
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS manual_products (
+      id VARCHAR(80) PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      description TEXT,
+      category VARCHAR(120),
+      sku VARCHAR(120),
+      unit VARCHAR(80),
+      sell_price DECIMAL(12, 2) DEFAULT 0,
+      cost_price DECIMAL(12, 2) DEFAULT 0,
+      stock_qty DECIMAL(12, 2) DEFAULT 0,
+      image_path TEXT,
+      active TINYINT(1) DEFAULT 1,
+      created_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL,
+      INDEX idx_manual_category (category),
+      INDEX idx_manual_sku (sku)
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS manual_product_variants (
+      id VARCHAR(80) PRIMARY KEY,
+      product_id VARCHAR(80) NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      price DECIMAL(12, 2) DEFAULT 0,
+      created_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL,
+      FOREIGN KEY (product_id) REFERENCES manual_products(id) ON DELETE CASCADE,
+      INDEX idx_manual_product_id (product_id)
     )`
   ];
 

@@ -4,6 +4,7 @@ import PrinterSettings from "./PrinterSettings";
 import DatabaseSettings from "./DatabaseSettings";
 import AccountSettings from "./AccountSettings";
 import StoreSettings from "./StoreSettings";
+import ProductManagement from "./ProductManagement";
 
 function formatRupiah(value) {
   return new Intl.NumberFormat("id-ID", {
@@ -100,6 +101,7 @@ export default function App() {
   const tabMeta = {
     order: { label: "Order Katalog", icon: "🧾", title: "POS Order Katalog" },
     kasir: { label: "Kasir Cash", icon: "💵", title: "Sistem POS Kasir Cash" },
+    products: { label: "Produk (NEW)", icon: "📦", title: "Manajemen Produk & Inventori" },
     store: { label: "Toko", icon: "🏬", title: "Konfigurasi & Pengaturan Toko" },
     printer: { label: "Printer", icon: "🖨", title: "Konfigurasi Printer & Kasir" },
     database: { label: "Database", icon: "🗄", title: "Konfigurasi Database Server" },
@@ -110,6 +112,7 @@ export default function App() {
     const tabs = [];
     if (can("view_order")) tabs.push({ key: "order", ...tabMeta.order });
     if (can("view_kasir")) tabs.push({ key: "kasir", ...tabMeta.kasir });
+    if (can("view_product") || can("manage_product")) tabs.push({ key: "products", ...tabMeta.products });
     if (can("manage_printer")) tabs.push({ key: "store", ...tabMeta.store });
     if (!readOnlyByLicense && can("view_printer")) tabs.push({ key: "printer", ...tabMeta.printer });
     if (!readOnlyByLicense && can("view_database")) tabs.push({ key: "database", ...tabMeta.database });
@@ -686,6 +689,10 @@ export default function App() {
                 </div>
               </section>
             </>
+          )}
+
+          {tab === "products" && (can("view_product") || can("manage_product")) && (
+            <ProductManagement />
           )}
 
           {tab === "printer" && can("view_printer") && (
