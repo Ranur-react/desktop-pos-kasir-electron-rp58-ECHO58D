@@ -36,7 +36,7 @@ function BillPreview({ cfg, charWidth }) {
   }
   rows.push({ type: "text", text: "" });
 
-  rows.push({ type: "title", text: "Custom Order Receipt" });
+  rows.push({ type: "title", text: "Struk Pembayaran" });
   rows.push({ type: "divider" });
 
   rows.push({ type: "text", text: `Order  : ORD-DEMO-0001` });
