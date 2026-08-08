@@ -20,7 +20,7 @@ function formatDate(value) {
 const CART_PAGE_SIZE = 10;
 const ORDER_PAGE_SIZE = 8;
 
-export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder = true, canRetur = true }) {
+export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder = true, canRetur = true, compactMode = false }) {
   const [catalogSource, setCatalogSource] = useState("csv");
   const [catalog, setCatalog] = useState({
     products: [],
@@ -456,7 +456,7 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
 }, [cart, loading, canCreateOrder, isCustomFallbackMode, selectedProduct, selectedProductId, filteredProducts, manualPrice, manualQty, catalogSearch]);
 
   return (
-    <>
+    <div className={`custom-order-shell ${compactMode ? "compact-order-shell" : ""}`}>
       <section className="panel order-shortcut-panel">
         <h3>Shortcut Order</h3>
         <p className="small-text">
@@ -795,7 +795,7 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
           onClose={() => setReturTarget(null)}
         />
       )}
-    </>
+    </div>
   );
 }
 

@@ -75,6 +75,7 @@ export default function App() {
 
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showOrderSidebar, setShowOrderSidebar] = useState(false);
 
   // -- Kasir state --
   const [nominal, setNominal] = useState("");
@@ -494,7 +495,7 @@ export default function App() {
   }
 
   return (
-    <main className="app-shell app-dashboard">
+    <main className={`app-shell app-dashboard ${tab === "order" ? "order-focus-mode" : ""} ${tab === "order" && showOrderSidebar ? "order-sidebar-open" : ""}`}>
       <aside className="sidebar panel">
         <div className="sidebar-brand">
           <h1>Barangmudo POS</h1>
@@ -533,6 +534,16 @@ export default function App() {
           </div>
 
           <div className="topbar-actions">
+            {tab === "order" && (
+              <button
+                className="top-icon-btn order-sidebar-toggle-btn"
+                type="button"
+                title={showOrderSidebar ? "Hide Navbar" : "Show Navbar"}
+                onClick={() => setShowOrderSidebar((value) => !value)}
+              >
+                {showOrderSidebar ? "Hide Navbar" : "Show Navbar"}
+              </button>
+            )}
             <div className="shift-label">Shift Aktif: <strong>Pagi (08:00 - 16:00)</strong></div>
             <div className="shopify-label">Shopify Terkoneksi</div>
             <div className="profile-menu-wrap">
@@ -589,6 +600,7 @@ export default function App() {
               onRefresh={loadOrders}
               canCreateOrder={can("create_order") && !readOnlyByLicense}
               canRetur={can("retur_order") && !readOnlyByLicense}
+              compactMode={true}
             />
           )}
 
