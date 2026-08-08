@@ -97,16 +97,29 @@ export default function App() {
 
   const can = (key) => permissions[key] === true;
 
+  const tabMeta = {
+    order: { label: "Order Katalog", icon: "🧾", title: "POS Order Katalog" },
+    kasir: { label: "Kasir Cash", icon: "💵", title: "Sistem POS Kasir Cash" },
+    store: { label: "Toko", icon: "🏬", title: "Konfigurasi & Pengaturan Toko" },
+    printer: { label: "Printer", icon: "🖨", title: "Konfigurasi Printer & Kasir" },
+    database: { label: "Database", icon: "🗄", title: "Konfigurasi Database Server" },
+    accounts: { label: "Akun", icon: "👤", title: "Manajemen Akun & Otoritas" }
+  };
+
   const availableTabs = useMemo(() => {
     const tabs = [];
-    if (can("view_order")) tabs.push({ key: "order", label: "Order Katalog", icon: "🛒" });
-    if (can("view_kasir")) tabs.push({ key: "kasir", label: "Kasir Cash", icon: "💵" });
-    if (can("manage_printer")) tabs.push({ key: "store", label: "Toko", icon: "⚙️" });
-    if (!readOnlyByLicense && can("view_printer")) tabs.push({ key: "printer", label: "Printer", icon: "🖨" });
-    if (!readOnlyByLicense && can("view_database")) tabs.push({ key: "database", label: "Database", icon: "🗄" });
-    if (!readOnlyByLicense && can("manage_accounts")) tabs.push({ key: "accounts", label: "Akun", icon: "👥" });
+    if (can("view_order")) tabs.push({ key: "order", ...tabMeta.order });
+    if (can("view_kasir")) tabs.push({ key: "kasir", ...tabMeta.kasir });
+    if (can("manage_printer")) tabs.push({ key: "store", ...tabMeta.store });
+    if (!readOnlyByLicense && can("view_printer")) tabs.push({ key: "printer", ...tabMeta.printer });
+    if (!readOnlyByLicense && can("view_database")) tabs.push({ key: "database", ...tabMeta.database });
+    if (!readOnlyByLicense && can("manage_accounts")) tabs.push({ key: "accounts", ...tabMeta.accounts });
     return tabs;
   }, [permissions, readOnlyByLicense]);
+
+  const currentTabMeta = useMemo(() => {
+    return availableTabs.find((item) => item.key === tab) || availableTabs[0] || tabMeta.order;
+  }, [availableTabs, tab]);
 
   useEffect(() => {
     if (availableTabs.length === 0) return;
@@ -478,206 +491,228 @@ export default function App() {
   }
 
   return (
-    <main className="app-shell dashboard-shell">
-      <header className="dashboard-topbar panel">
-        <div className="topbar-brand">
+    <main className="app-shell app-dashboard">
+      <aside className="sidebar panel">
+        <div className="sidebar-brand">
           <h1>Barangmudo POS</h1>
-          <p className="small-text">Operasional Kasir Harian</p>
+          <p className="small-text">Windows Cashier v2.1</p>
         </div>
 
-        <div className="topbar-actions">
-          <div className="profile-menu-wrap">
+        <nav className="sidebar-nav">
+          {availableTabs.map((item) => (
             <button
-              className="top-icon-btn profile-btn"
-              type="button"
-              title="Menu Profil"
-              onClick={() => setShowProfileMenu((v) => !v)}
+              key={item.key}
+              className={`sidebar-tab ${tab === item.key ? "sidebar-tab-active" : ""}`}
+              onClick={() => setTab(item.key)}
             >
-              <span className="profile-name-display">{authState.user.displayName || authState.user.username}</span>
-              👤
+              <span className="tab-icon">{item.icon}</span>
+              <span>{item.label}</span>
             </button>
+          ))}
+        </nav>
 
-            {showProfileMenu && (
-              <div className="profile-dropdown panel">
-                <div className="profile-dropdown-head">
-                  <strong>{authState.user.displayName || authState.user.username}</strong>
-                  <p className="small-text">{authState.user.role}</p>
-                </div>
-                <button
-                  className="profile-item-btn"
-                  onClick={() => {
-                    setShowProfileMenu(false);
-                    setShowPasswordModal(true);
-                  }}
-                >
-                  Ubah Password
-                </button>
-                <button className="profile-item-btn profile-logout-btn" onClick={handleLogout}>
-                  Logout
-                </button>
-              </div>
-            )}
+        <div className="sidebar-user">
+          <div className="sidebar-avatar">{(authState.user.displayName || authState.user.username || "U").charAt(0).toUpperCase()}</div>
+          <div>
+            <strong>{authState.user.displayName || authState.user.username}</strong>
+            <p className="small-text">{authState.user.role}</p>
           </div>
         </div>
-      </header>
+      </aside>
 
-      {readOnlyByLicense && (
-        <section className="panel license-banner-panel">
-          <h3>Mode Read-Only</h3>
-          <p className="small-text" style={{ marginBottom: "6px" }}>
-            {licenseState?.readOnlyMessage || "Lisensi tidak aktif. Aplikasi dibatasi ke mode baca saja."}
-          </p>
-          <p className="small-text" style={{ marginBottom: 0 }}>
-            Status: {licenseState?.reason || "-"} | Hubungi developer: {licenseState?.developerContact?.email || "-"} | {licenseState?.developerContact?.whatsapp || "-"}
-          </p>
-        </section>
-      )}
+      <section className="workspace-area">
+        <header className="dashboard-topbar panel workspace-topbar">
+          <div className="topbar-brand">
+            <h2>{currentTabMeta.title}</h2>
+            <div className={`connection-pill ${readOnlyByLicense ? "connection-pill-warning" : "connection-pill-ok"}`}>
+              {readOnlyByLicense ? "Mode Read-Only" : "Koneksi Database Aktif"}
+            </div>
+          </div>
 
-      <nav className="tab-bar dashboard-nav panel">
-        {availableTabs.map((item) => (
-          <button
-            key={item.key}
-            className={`tab-btn ${tab === item.key ? "tab-active" : ""}`}
-            onClick={() => setTab(item.key)}
-          >
-            <span className="tab-icon">{item.icon}</span>
-            <span>{item.label}</span>
-          </button>
-        ))}
-      </nav>
-
-      {tab === "order" && can("view_order") && (
-        <CustomOrder
-          orders={orders}
-          summary={orderSummary}
-          onRefresh={loadOrders}
-          canCreateOrder={can("create_order") && !readOnlyByLicense}
-          canRetur={can("retur_order") && !readOnlyByLicense}
-        />
-      )}
-
-      {tab === "kasir" && can("view_kasir") && (
-        <>
-          <section className="panel kasir-shortcuts-panel">
-            <h3>Shortcut Kasir</h3>
-            <p className="small-text">F2: Nominal | F3: Deskripsi | Ctrl+I: Uang Masuk | Ctrl+U: Uang Keluar | Ctrl+P: Cetak Struk</p>
-          </section>
-
-          <section className="panel form-panel">
-            <h2>POS Kasir Cash</h2>
-            <p className="small-text">Input transaksi cash harian dan cetak ke thermal printer.</p>
-
-            <label htmlFor="nominal">Nominal (Rupiah)</label>
-            <input
-              ref={nominalInputRef}
-              id="nominal"
-              type="number"
-              min="0"
-              step="100"
-              placeholder="Contoh: 50000"
-              value={nominal}
-              onChange={(e) => setNominal(e.target.value)}
-              disabled={loading || !can("create_transaction") || readOnlyByLicense}
-            />
-
-            <label htmlFor="description">Deskripsi Transaksi</label>
-            <input
-              ref={descInputRef}
-              id="description"
-              type="text"
-              placeholder="Contoh: Penjualan kopi"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              disabled={loading || !can("create_transaction") || readOnlyByLicense}
-            />
-
-            <div className="btn-row">
+          <div className="topbar-actions">
+            <div className="shift-label">Shift Aktif: <strong>Pagi (08:00 - 16:00)</strong></div>
+            <div className="shopify-label">Shopify Terkoneksi</div>
+            <div className="profile-menu-wrap">
               <button
-                className="btn btn-in"
-                onClick={() => submitTransaction("in")}
-                disabled={loading || !can("create_transaction") || readOnlyByLicense}
+                className="top-icon-btn profile-btn"
+                type="button"
+                title="Menu Profil"
+                onClick={() => setShowProfileMenu((v) => !v)}
               >
-                Uang Masuk
+                <span className="profile-name-display">{authState.user.displayName || authState.user.username}</span>
               </button>
-              <button
-                className="btn btn-out"
-                onClick={() => submitTransaction("out")}
-                disabled={loading || !can("create_transaction") || readOnlyByLicense}
-              >
-                Uang Keluar
-              </button>
+
+              {showProfileMenu && (
+                <div className="profile-dropdown panel">
+                  <div className="profile-dropdown-head">
+                    <strong>{authState.user.displayName || authState.user.username}</strong>
+                    <p className="small-text">{authState.user.role}</p>
+                  </div>
+                  <button
+                    className="profile-item-btn"
+                    onClick={() => {
+                      setShowProfileMenu(false);
+                      setShowPasswordModal(true);
+                    }}
+                  >
+                    Ubah Password
+                  </button>
+                  <button className="profile-item-btn profile-logout-btn" onClick={handleLogout}>
+                    Logout
+                  </button>
+                </div>
+              )}
             </div>
+          </div>
+        </header>
 
-            <button
-              className="btn btn-print"
-              onClick={printLastReceipt}
-              disabled={loading || !can("print_receipt") || readOnlyByLicense}
-            >
-              Cetak Struk &amp; Buka Laci
-            </button>
-
-            <div className="status">Status: {status}</div>
-            {printer && <div className="small-text">Printer: {printer.interface}</div>}
+        {readOnlyByLicense && (
+          <section className="panel license-banner-panel">
+            <h3>Mode Read-Only</h3>
+            <p className="small-text" style={{ marginBottom: "6px" }}>
+              {licenseState?.readOnlyMessage || "Lisensi tidak aktif. Aplikasi dibatasi ke mode baca saja."}
+            </p>
+            <p className="small-text" style={{ marginBottom: 0 }}>
+              Status: {licenseState?.reason || "-"} | Hubungi developer: {licenseState?.developerContact?.email || "-"} | {licenseState?.developerContact?.whatsapp || "-"}
+            </p>
           </section>
+        )}
 
-          <section className="panel summary-panel">
-            <h2>Summary Hari Ini</h2>
-            <div className="summary-grid">
-              <article><h3>Total Uang Masuk</h3><p>{formatRupiah(summary.totalIn)}</p></article>
-              <article><h3>Total Uang Keluar</h3><p>{formatRupiah(summary.totalOut)}</p></article>
-              <article><h3>Saldo Hari Ini</h3><p>{formatRupiah(summary.balance)}</p></article>
-            </div>
-          </section>
+        <div className="workspace-body">
+          {tab === "order" && can("view_order") && (
+            <CustomOrder
+              orders={orders}
+              summary={orderSummary}
+              onRefresh={loadOrders}
+              canCreateOrder={can("create_order") && !readOnlyByLicense}
+              canRetur={can("retur_order") && !readOnlyByLicense}
+            />
+          )}
 
-          <section className="panel history-panel">
-            <h2>Riwayat Transaksi Harian</h2>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr><th>Waktu</th><th>Jenis</th><th>Deskripsi</th><th>Nominal</th></tr>
-                </thead>
-                <tbody>
-                  {transactions.length === 0 && (
-                    <tr><td colSpan="4" className="empty-cell">Belum ada transaksi hari ini.</td></tr>
-                  )}
-                  {transactions.map((tx) => (
-                    <tr key={tx.id}>
-                      <td>{formatDate(tx.createdAt)}</td>
-                      <td>{tx.type === "in" ? "Masuk" : "Keluar"}</td>
-                      <td>{tx.description || "-"}</td>
-                      <td className={tx.type === "in" ? "txt-in" : "txt-out"}>{formatRupiah(tx.nominal)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </>
-      )}
+          {tab === "kasir" && can("view_kasir") && (
+            <>
+              <section className="panel kasir-shortcuts-panel">
+                <h3>Shortcut Kasir</h3>
+                <p className="small-text">F2: Nominal | F3: Deskripsi | Ctrl+I: Uang Masuk | Ctrl+U: Uang Keluar | Ctrl+P: Cetak Struk</p>
+              </section>
 
-      {tab === "printer" && can("view_printer") && (
-        <PrinterSettings onApplied={(cfg) => setPrinter(cfg || null)} />
-      )}
+              <section className="panel form-panel">
+                <h2>POS Kasir Cash</h2>
+                <p className="small-text">Input transaksi cash harian dan cetak ke thermal printer.</p>
 
-      {tab === "store" && can("manage_printer") && (
-        <StoreSettings
-          onApplied={() => {}}
-          licenseState={licenseState}
-          onLicenseStateChanged={setLicenseState}
-          appReadOnly={readOnlyByLicense}
-        />
-      )}
+                <label htmlFor="nominal">Nominal (Rupiah)</label>
+                <input
+                  ref={nominalInputRef}
+                  id="nominal"
+                  type="number"
+                  min="0"
+                  step="100"
+                  placeholder="Contoh: 50000"
+                  value={nominal}
+                  onChange={(e) => setNominal(e.target.value)}
+                  disabled={loading || !can("create_transaction") || readOnlyByLicense}
+                />
 
-      {tab === "database" && can("view_database") && (
-        <DatabaseSettings onApplied={() => {}} />
-      )}
+                <label htmlFor="description">Deskripsi Transaksi</label>
+                <input
+                  ref={descInputRef}
+                  id="description"
+                  type="text"
+                  placeholder="Contoh: Penjualan kopi"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  disabled={loading || !can("create_transaction") || readOnlyByLicense}
+                />
 
-      {tab === "accounts" && can("manage_accounts") && (
-        <AccountSettings
-          currentUser={authState.user}
-          onAuthStateChanged={(nextState) => setAuthState(nextState)}
-        />
-      )}
+                <div className="btn-row">
+                  <button
+                    className="btn btn-in"
+                    onClick={() => submitTransaction("in")}
+                    disabled={loading || !can("create_transaction") || readOnlyByLicense}
+                  >
+                    Uang Masuk
+                  </button>
+                  <button
+                    className="btn btn-out"
+                    onClick={() => submitTransaction("out")}
+                    disabled={loading || !can("create_transaction") || readOnlyByLicense}
+                  >
+                    Uang Keluar
+                  </button>
+                </div>
+
+                <button
+                  className="btn btn-print"
+                  onClick={printLastReceipt}
+                  disabled={loading || !can("print_receipt") || readOnlyByLicense}
+                >
+                  Cetak Struk &amp; Buka Laci
+                </button>
+
+                <div className="status">Status: {status}</div>
+                {printer && <div className="small-text">Printer: {printer.interface}</div>}
+              </section>
+
+              <section className="panel summary-panel">
+                <h2>Summary Hari Ini</h2>
+                <div className="summary-grid">
+                  <article><h3>Total Uang Masuk</h3><p>{formatRupiah(summary.totalIn)}</p></article>
+                  <article><h3>Total Uang Keluar</h3><p>{formatRupiah(summary.totalOut)}</p></article>
+                  <article><h3>Saldo Hari Ini</h3><p>{formatRupiah(summary.balance)}</p></article>
+                </div>
+              </section>
+
+              <section className="panel history-panel">
+                <h2>Riwayat Transaksi Harian</h2>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr><th>Waktu</th><th>Jenis</th><th>Deskripsi</th><th>Nominal</th></tr>
+                    </thead>
+                    <tbody>
+                      {transactions.length === 0 && (
+                        <tr><td colSpan="4" className="empty-cell">Belum ada transaksi hari ini.</td></tr>
+                      )}
+                      {transactions.map((tx) => (
+                        <tr key={tx.id}>
+                          <td>{formatDate(tx.createdAt)}</td>
+                          <td>{tx.type === "in" ? "Masuk" : "Keluar"}</td>
+                          <td>{tx.description || "-"}</td>
+                          <td className={tx.type === "in" ? "txt-in" : "txt-out"}>{formatRupiah(tx.nominal)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </>
+          )}
+
+          {tab === "printer" && can("view_printer") && (
+            <PrinterSettings onApplied={(cfg) => setPrinter(cfg || null)} />
+          )}
+
+          {tab === "store" && can("manage_printer") && (
+            <StoreSettings
+              onApplied={() => {}}
+              licenseState={licenseState}
+              onLicenseStateChanged={setLicenseState}
+              appReadOnly={readOnlyByLicense}
+            />
+          )}
+
+          {tab === "database" && can("view_database") && (
+            <DatabaseSettings onApplied={() => {}} />
+          )}
+
+          {tab === "accounts" && can("manage_accounts") && (
+            <AccountSettings
+              currentUser={authState.user}
+              onAuthStateChanged={(nextState) => setAuthState(nextState)}
+            />
+          )}
+        </div>
+      </section>
 
       {showPasswordModal && (
         <div className="modal-overlay" onClick={() => setShowPasswordModal(false)}>

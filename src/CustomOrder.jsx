@@ -105,7 +105,7 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
       }
       const sourceDirText = data.sourceDirectory ? ` (folder: ${data.sourceDirectory})` : "";
       setStatus(
-        `Katalog siap. ${data.products.length} produk dari ${data.sourceFilesCount} file CSV.${sourceDirText}`
+        `${data.products.length} produk bersumber dari ${data.sourceFilesCount} file CSV`
       );
     } catch (err) {
       setStatus(`Gagal memuat katalog: ${err.message}`);
