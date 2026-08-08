@@ -78,6 +78,7 @@ function getRuntimeConfig() {
     storeSubtitle: getConfigValue(dotEnv, "STORE_SUBTITLE", ""),
     storeAddress: getConfigValue(dotEnv, "STORE_ADDRESS", ""),
     storeWa: getConfigValue(dotEnv, "STORE_WA", ""),
+    csvPath: getConfigValue(dotEnv, "CSV_PATH", ""),
     storeLogoPath: resolveLogoPath(storeLogoPathRaw),
     qrisStaticContent: getConfigValue(dotEnv, "QRIS_STATIC_CONTENT", ""),
     appIconPath: getConfigValue(dotEnv, "APP_ICON_PATH", ""),

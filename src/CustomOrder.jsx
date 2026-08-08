@@ -103,8 +103,9 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
       if (data.products.length > 0 && !selectedProductId) {
         setSelectedProductId(data.products[0].id);
       }
+      const sourceDirText = data.sourceDirectory ? ` (folder: ${data.sourceDirectory})` : "";
       setStatus(
-        `Katalog siap. ${data.products.length} produk dari ${data.sourceFilesCount} file CSV.`
+        `Katalog siap. ${data.products.length} produk dari ${data.sourceFilesCount} file CSV.${sourceDirText}`
       );
     } catch (err) {
       setStatus(`Gagal memuat katalog: ${err.message}`);

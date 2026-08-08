@@ -10,7 +10,33 @@ function getAppRoot(app) {
     : path.resolve(__dirname, "..", "..");
 }
 
-function getAssetsDir(app) {
+function getEnvPath(app) {
+  if (app.isPackaged) {
+    return path.join(app.getPath("userData"), ".env");
+  }
+  return path.join(getAppRoot(app), ".env");
+}
+
+function readCsvPathFromEnv(app) {
+  const envPath = getEnvPath(app);
+  if (!fs.existsSync(envPath)) return "";
+
+  const lines = fs.readFileSync(envPath, "utf-8").split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+    const eqIdx = trimmed.indexOf("=");
+    const key = trimmed.slice(0, eqIdx).trim();
+    const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, "");
+    if (key === "CSV_PATH" && val) {
+      return val;
+    }
+  }
+
+  return "";
+}
+
+function getDefaultAssetsDir(app) {
   const candidates = [
     path.join(getAppRoot(app), "assets"),
     path.join(process.resourcesPath || "", "assets"),
@@ -24,6 +50,19 @@ function getAssetsDir(app) {
   }
 
   return candidates[0];
+}
+
+function resolveCatalogCsvDir(app) {
+  const csvPath = readCsvPathFromEnv(app);
+  if (!csvPath) {
+    return getDefaultAssetsDir(app);
+  }
+
+  if (path.isAbsolute(csvPath)) {
+    return csvPath;
+  }
+
+  return path.resolve(getAppRoot(app), csvPath);
 }
 
 function parseCsv(text) {
@@ -221,10 +260,10 @@ function buildCatalog(filesData) {
   return { products, categories };
 }
 
-function getCatalogSignature(csvFiles) {
+function getCatalogSignature(csvDir, csvFiles) {
   return csvFiles
     .map((f) => `${f.name}:${f.stats.mtimeMs}:${f.stats.size}`)
-    .join("|");
+    .join("|") + `|dir:${csvDir}`;
 }
 
 async function saveCatalogToDatabase(catalog) {
@@ -297,17 +336,17 @@ async function saveCatalogToDatabase(catalog) {
 
 async function readCatalogFromAssets(app, options = {}) {
   const { forceReload = false } = options;
-  const assetsDir = getAssetsDir(app);
+  const csvDir = resolveCatalogCsvDir(app);
 
-  if (!fs.existsSync(assetsDir)) {
-    throw new Error(`Folder assets tidak ditemukan: ${assetsDir}`);
+  if (!fs.existsSync(csvDir)) {
+    throw new Error(`Folder CSV tidak ditemukan: ${csvDir}`);
   }
 
-  const fileNames = fs.readdirSync(assetsDir);
+  const fileNames = fs.readdirSync(csvDir);
   const csvFiles = fileNames
     .filter((name) => name.toLowerCase().endsWith(".csv"))
     .map((name) => {
-      const fullPath = path.join(assetsDir, name);
+      const fullPath = path.join(csvDir, name);
       return {
         name,
         fullPath,
@@ -317,10 +356,10 @@ async function readCatalogFromAssets(app, options = {}) {
     .sort((a, b) => a.stats.mtimeMs - b.stats.mtimeMs);
 
   if (!csvFiles.length) {
-    throw new Error("Tidak ada file .csv di folder assets.");
+    throw new Error(`Tidak ada file .csv di folder CSV: ${csvDir}`);
   }
 
-  const signature = getCatalogSignature(csvFiles);
+  const signature = getCatalogSignature(csvDir, csvFiles);
   if (!forceReload && _cache && _cache.signature === signature) {
     return _cache.data;
   }
@@ -338,6 +377,7 @@ async function readCatalogFromAssets(app, options = {}) {
   const built = buildCatalog(filesData);
   const data = {
     ...built,
+    sourceDirectory: csvDir,
     sourceFiles: filesData.map((f) => ({
       fileName: f.fileName,
       modifiedAt: f.modifiedAt,

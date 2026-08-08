@@ -138,6 +138,7 @@ export default function StoreSettings({ onApplied, licenseState, onLicenseStateC
   });
 
   const [dataPath, setDataPath] = useState("");
+  const [csvPath, setCsvPath] = useState("");
   const [appIconPath, setAppIconPath] = useState("");
 
   const [loading, setLoading] = useState(false);
@@ -180,6 +181,7 @@ export default function StoreSettings({ onApplied, licenseState, onLicenseStateC
       const data = await window.posApi.getStoreConfig();
       setCfg(data);
       setQrisTestInput(data.qrisStaticContent || "");
+      setCsvPath(data.csvPath || "");
 
       const dp = await window.posApi.getDataPath();
       setDataPath(dp.dataPath || "");
@@ -357,19 +359,41 @@ export default function StoreSettings({ onApplied, licenseState, onLicenseStateC
     }
   }
 
+  async function pickCsvFolder() {
+    try {
+      const res = await window.posApi.pickDataFolder();
+      if (!res.canceled) {
+        setCsvPath(res.folderPath);
+        showStatus(`Folder CSV dipilih: ${res.folderPath}`, "ok");
+      }
+    } catch (err) {
+      showStatus(`Gagal pilih folder CSV: ${err.message}`, "err");
+    }
+  }
+
   async function saveDataPath() {
     if (!dataPath.trim()) {
-      showStatus("Path tidak boleh kosong.", "err");
+      showStatus("Path lokasi JSON tidak boleh kosong.", "err");
+      return;
+    }
+    if (!csvPath.trim()) {
+      showStatus("Path lokasi CSV tidak boleh kosong.", "err");
       return;
     }
     setLoading(true);
     try {
-      const res = await window.posApi.setDataPath(dataPath);
-      if (res.success) {
-        showStatus("DATA_PATH berhasil disimpan. Restart aplikasi untuk mengaktifkan.", "ok");
+      const dataPathRes = await window.posApi.setDataPath(dataPath);
+      if (!dataPathRes.success) {
+        showStatus(`Gagal: ${dataPathRes.error}`, "err");
+        return;
+      }
+
+      await window.posApi.saveStoreConfig({ csvPath });
+      if (dataPathRes.success) {
+        showStatus("DATA_PATH dan CSV_PATH berhasil disimpan. Restart aplikasi untuk mengaktifkan.", "ok");
         onApplied?.();
       } else {
-        showStatus(`Gagal: ${res.error}`, "err");
+        showStatus("Gagal menyimpan pengaturan Data Path.", "err");
       }
     } catch (err) {
       showStatus(`Gagal: ${err.message}`, "err");
@@ -756,20 +780,27 @@ export default function StoreSettings({ onApplied, licenseState, onLicenseStateC
       {/* ──── DATA PATH ──── */}
       {activeSection === "data" && (
         <div className="store-section">
-          <h3>Lokasi Folder Data (DATA_PATH)</h3>
+          <h3>Pengaturan Data Path</h3>
           <p className="small-text">
-            Folder tempat semua file JSON transaksi, order, dan data harian disimpan.
             Perubahan baru aktif setelah restart aplikasi.{" "}
             <strong>Pastikan folder tujuan sudah ada dan bisa diakses.</strong>
           </p>
+          {/* <p className="small-text">
+            Pengaturan folder tempat semua file JSON transaksi, order, dan data harian disimpan.
+            Perubahan baru aktif setelah restart aplikasi.{" "}
+            <strong>Pastikan folder tujuan sudah ada dan bisa diakses.</strong>
+          </p> */}
 
-          <div className="database-form-group">
+          {/* <div className="database-form-group">
             <label>Path Folder Data Aktif</label>
             <div className="printer-current-box">{dataPath || "Belum terdeteksi"}</div>
-          </div>
+          </div> */}
 
           <div className="database-form-group">
-            <label>Ubah ke Folder Baru (DATA_PATH)</label>
+            <label>1. Lokasi folder JSON</label>
+            <span className="small-text">
+              Pengaturan folder tempat semua file JSON transaksi, order, dan data harian disimpan.{" "}
+            </span>
             <div className="logo-picker-row">
               <input
                 className="path-input"
@@ -788,12 +819,37 @@ export default function StoreSettings({ onApplied, licenseState, onLicenseStateC
             </span>
           </div>
 
+          <div className="database-form-group">
+            <label>2. Lokasi CSV</label>
+            <span className="small-text">
+              Pengaturan lokasi file CSV sumber data hasil export dari Shopify katalog produk diambil untuk impor ke aplikasi.{" "}
+            </span>
+            <div className="logo-picker-row">
+              <input
+                className="path-input"
+                value={csvPath}
+                onChange={(e) => setCsvPath(e.target.value)}
+                placeholder="Contoh: C:\POS\csv atau path absolut lainnya"
+                disabled={loading}
+              />
+              <button className="btn btn-secondary" onClick={pickCsvFolder} disabled={loading}>
+                Browse...
+              </button>
+            </div>
+            <span className="small-text">
+              Biarkan kosong untuk menggunakan folder default:{" "}
+              <code>C:\Program Files\Barangmudo POS\resources\assets</code>
+            </span>
+          </div>
+
           <div className="store-actions-row" style={{ marginTop: "12px" }}>
-            <button className="btn btn-save" onClick={saveDataPath} disabled={loading || !dataPath.trim()}>
+            <button className="btn btn-save" onClick={saveDataPath} disabled={loading || !dataPath.trim() || !csvPath.trim()}>
               Simpan &amp; Restart Diperlukan
             </button>
           </div>
         </div>
+
+        
       )}
 
       {/* Status bar */}
