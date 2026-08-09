@@ -145,6 +145,25 @@ body { margin: 0; min-height: 100vh; }
   color: #b42318;
 }
 
+.order-sidebar-toggle-btn {
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #2f5de2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.topbar-brand {
+  gap: 10px;
+}
+
 /* ── Tab Bar ── */
 .tab-bar {
   display: flex;
@@ -1527,6 +1546,53 @@ body {
   font-weight: 800;
 }
 
+.sidebar-user-wrap {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid #e7eef8;
+  position: relative;
+}
+
+.sidebar-user-btn {
+  width: 100%;
+  border: 0;
+  background: #f8fbff;
+  border-radius: 14px;
+  padding: 10px 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-user-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.sidebar-user-info strong,
+.sidebar-user-info .small-text {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-user-info .small-text {
+  margin: 2px 0 0;
+}
+
+.sidebar-user-caret {
+  color: #678;
+  font-size: 0.85rem;
+}
+
+.sidebar-user-menu {
+  margin-top: 8px;
+  padding: 10px;
+}
+
 .workspace-area {
   min-width: 0;
   display: grid;
@@ -1893,6 +1959,15 @@ table th {
   width: 240px;
   min-height: 100vh;
   box-shadow: 18px 0 40px rgba(27, 48, 88, 0.18);
+}
+
+.order-focus-mode.order-sidebar-open .workspace-area {
+  pointer-events: none;
+}
+
+.order-focus-mode.order-sidebar-open .workspace-area .dashboard-topbar,
+.order-focus-mode.order-sidebar-open .workspace-area .workspace-body {
+  pointer-events: auto;
 }
 
 .order-focus-mode.app-dashboard {

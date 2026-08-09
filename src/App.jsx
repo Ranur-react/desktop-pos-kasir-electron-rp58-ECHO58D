@@ -96,6 +96,7 @@ export default function App() {
 
   const nominalInputRef = useRef(null);
   const descInputRef = useRef(null);
+  const sidebarRef = useRef(null);
 
   const can = (key) => permissions[key] === true;
 
@@ -132,6 +133,27 @@ export default function App() {
       setTab(availableTabs[0].key);
     }
   }, [availableTabs, tab]);
+
+  useEffect(() => {
+    if (tab !== "order") {
+      setShowOrderSidebar(false);
+    }
+  }, [tab]);
+
+  useEffect(() => {
+    if (tab !== "order" || !showOrderSidebar) return;
+
+    function handlePointerDown(event) {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest(".order-sidebar-toggle-btn")) return;
+      if (sidebarRef.current?.contains(target)) return;
+      setShowOrderSidebar(false);
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => window.removeEventListener("pointerdown", handlePointerDown);
+  }, [showOrderSidebar, tab]);
 
   async function loadBootstrap() {
     const data = await window.posApi.getBootstrap();
@@ -496,7 +518,7 @@ export default function App() {
 
   return (
     <main className={`app-shell app-dashboard ${tab === "order" ? "order-focus-mode" : ""} ${tab === "order" && showOrderSidebar ? "order-sidebar-open" : ""}`}>
-      <aside className="sidebar panel">
+      <aside ref={sidebarRef} className="sidebar panel">
         <div className="sidebar-brand">
           <h1>Barangmudo POS</h1>
           <p className="small-text">Windows Cashier v2.1</p>
@@ -515,18 +537,59 @@ export default function App() {
           ))}
         </nav>
 
-        <div className="sidebar-user">
-          <div className="sidebar-avatar">{(authState.user.displayName || authState.user.username || "U").charAt(0).toUpperCase()}</div>
-          <div>
-            <strong>{authState.user.displayName || authState.user.username}</strong>
-            <p className="small-text">{authState.user.role}</p>
-          </div>
+        <div className="sidebar-user-wrap">
+          <button
+            className="sidebar-user-btn"
+            type="button"
+            onClick={() => setShowProfileMenu((value) => !value)}
+            aria-haspopup="menu"
+            aria-expanded={showProfileMenu}
+          >
+            <div className="sidebar-avatar">{(authState.user.displayName || authState.user.username || "U").charAt(0).toUpperCase()}</div>
+            <div className="sidebar-user-info">
+              <strong>{authState.user.displayName || authState.user.username}</strong>
+              <p className="small-text">{authState.user.role}</p>
+            </div>
+            <span className="sidebar-user-caret">▾</span>
+          </button>
+
+          {showProfileMenu && (
+            <div className="sidebar-user-menu panel">
+              <div className="profile-dropdown-head">
+                <strong>{authState.user.displayName || authState.user.username}</strong>
+                <p className="small-text">{authState.user.role}</p>
+              </div>
+              <button
+                className="profile-item-btn"
+                onClick={() => {
+                  setShowProfileMenu(false);
+                  setShowPasswordModal(true);
+                }}
+              >
+                Ubah Password
+              </button>
+              <button className="profile-item-btn profile-logout-btn" onClick={handleLogout}>
+                Logout
+              </button>
+            </div>
+          )}
         </div>
       </aside>
 
       <section className="workspace-area">
         <header className="dashboard-topbar panel workspace-topbar">
           <div className="topbar-brand">
+            {tab === "order" && (
+              <button
+                className="top-icon-btn order-sidebar-toggle-btn"
+                type="button"
+                title={showOrderSidebar ? "Hide Navbar" : "Show Navbar"}
+                aria-label={showOrderSidebar ? "Hide Navbar" : "Show Navbar"}
+                onClick={() => setShowOrderSidebar((value) => !value)}
+              >
+                ☰
+              </button>
+            )}
             <h2>{currentTabMeta.title}</h2>
             <div className={`connection-pill ${readOnlyByLicense ? "connection-pill-warning" : "connection-pill-ok"}`}>
               {readOnlyByLicense ? "Mode Read-Only" : "Koneksi Database Aktif"}
@@ -534,49 +597,8 @@ export default function App() {
           </div>
 
           <div className="topbar-actions">
-            {tab === "order" && (
-              <button
-                className="top-icon-btn order-sidebar-toggle-btn"
-                type="button"
-                title={showOrderSidebar ? "Hide Navbar" : "Show Navbar"}
-                onClick={() => setShowOrderSidebar((value) => !value)}
-              >
-                {showOrderSidebar ? "Hide Navbar" : "Show Navbar"}
-              </button>
-            )}
             <div className="shift-label">Shift Aktif: <strong>Pagi (08:00 - 16:00)</strong></div>
             <div className="shopify-label">Shopify Terkoneksi</div>
-            <div className="profile-menu-wrap">
-              <button
-                className="top-icon-btn profile-btn"
-                type="button"
-                title="Menu Profil"
-                onClick={() => setShowProfileMenu((v) => !v)}
-              >
-                <span className="profile-name-display">{authState.user.displayName || authState.user.username}</span>
-              </button>
-
-              {showProfileMenu && (
-                <div className="profile-dropdown panel">
-                  <div className="profile-dropdown-head">
-                    <strong>{authState.user.displayName || authState.user.username}</strong>
-                    <p className="small-text">{authState.user.role}</p>
-                  </div>
-                  <button
-                    className="profile-item-btn"
-                    onClick={() => {
-                      setShowProfileMenu(false);
-                      setShowPasswordModal(true);
-                    }}
-                  >
-                    Ubah Password
-                  </button>
-                  <button className="profile-item-btn profile-logout-btn" onClick={handleLogout}>
-                    Logout
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
         </header>
 
