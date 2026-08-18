@@ -26,7 +26,8 @@ const {
   returOrderItem,
   getOrderById,
   getTodayOrdersSummary,
-  getOrdersByDateRange
+  getOrdersByDateRange,
+  syncAllOrdersToDatabase
 } = require("./services/orderStorage");
 const {
   generateQris,
@@ -492,6 +493,17 @@ ipcMain.handle("order:get-by-date-range", async (_, payload) => {
   return getOrdersByDateRange(app, { from, to });
 });
 
+ipcMain.handle("order:online-sync", async () => {
+  await ensureLicenseAllowsWrite();
+  ensurePermission("view_order");
+
+  if (!db.isConnected()) {
+    throw new Error("MySQL belum terhubung. Silakan aktifkan koneksi database terlebih dahulu.");
+  }
+
+  return syncAllOrdersToDatabase(app);
+});
+
 ipcMain.handle("catalog:get", async () => {
   ensurePermission("view_order");
   return readCatalogFromAssets(app, { forceReload: false });
@@ -880,12 +892,44 @@ ipcMain.handle("store:save-config", async (_, payload) => {
     printerEnabled: "PRINTER_ENABLED",
     drawerEnabled: "DRAWER_ENABLED"
   };
+  const normalized = {};
   for (const [field, envKey] of Object.entries(fieldMap)) {
     if (payload && Object.prototype.hasOwnProperty.call(payload, field)) {
-      setEnvKey(envKey, String(payload[field] ?? ""));
+      const value = payload[field];
+      normalized[field] = value;
+      setEnvKey(envKey, String(value ?? ""));
     }
   }
+
+  if (db.isConnected()) {
+    const { syncStoreSettingsToDatabase } = require("./services/dbConnection");
+    await syncStoreSettingsToDatabase(app, normalized);
+  }
+
   return { success: true, envPath: getEnvPath() };
+});
+
+ipcMain.handle("store:sync-config", async () => {
+  await ensureLicenseAllowsWrite();
+  ensurePermission("manage_printer");
+  if (!db.isConnected()) {
+    throw new Error("MySQL belum terhubung. Silakan aktifkan koneksi database terlebih dahulu.");
+  }
+
+  const { syncStoreSettingsToDatabase } = require("./services/dbConnection");
+  const cfg = getRuntimeConfig();
+  return syncStoreSettingsToDatabase(app, {
+    storeTitle: cfg.storeTitle,
+    storeSubtitle: cfg.storeSubtitle,
+    storeAddress: cfg.storeAddress,
+    storeWa: cfg.storeWa,
+    csvPath: cfg.csvPath,
+    storeLogoPath: cfg.storeLogoPath,
+    printerCharWidth: cfg.printerCharWidth,
+    qrisStaticContent: cfg.qrisStaticContent,
+    printerEnabled: cfg.printerEnabled,
+    drawerEnabled: cfg.drawerEnabled
+  });
 });
 
 ipcMain.handle("store:pick-image", async () => {

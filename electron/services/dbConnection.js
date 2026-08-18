@@ -79,7 +79,7 @@ async function createTables(connection) {
       cash_given DECIMAL(12, 0),
       change_amount DECIMAL(12, 0),
       qris_meta JSON,
-      status ENUM('paid', 'partial-return') DEFAULT 'paid',
+      status ENUM('paid', 'partial-return', 'fully-returned') DEFAULT 'paid',
       created_at DATETIME NOT NULL,
       created_date DATE NOT NULL,
       paid_at DATETIME NOT NULL,
@@ -96,10 +96,24 @@ async function createTables(connection) {
       sku VARCHAR(100),
       variant_title VARCHAR(255),
       product_handle VARCHAR(255),
-      retur_status ENUM('returned', NULL),
+      retur_status ENUM('returned') DEFAULT NULL,
       created_at DATETIME NOT NULL,
       FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
       INDEX idx_order (order_id)
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS order_retur_history (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      order_id VARCHAR(50) NOT NULL,
+      line_id VARCHAR(50) NOT NULL,
+      title VARCHAR(255) NOT NULL,
+      price DECIMAL(12, 0) NOT NULL,
+      qty INT NOT NULL,
+      line_total DECIMAL(12, 0) NOT NULL,
+      reason TEXT,
+      retur_at DATETIME NOT NULL,
+      FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+      INDEX idx_order_retur (order_id)
     )`,
 
     `CREATE TABLE IF NOT EXISTS catalog_products (
@@ -145,6 +159,12 @@ async function createTables(connection) {
       updated_at DATETIME NOT NULL,
       last_login_at DATETIME NULL,
       INDEX idx_role (role)
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS store_settings (
+      key_name VARCHAR(128) PRIMARY KEY,
+      value TEXT,
+      updated_at DATETIME NOT NULL
     )`,
 
     `CREATE TABLE IF NOT EXISTS manual_products (
@@ -242,6 +262,80 @@ async function closeConnection() {
   }
 }
 
+async function syncStoreSettingsToDatabase(app, settings) {
+  const pool = await getPool();
+  if (!pool) return { success: false, synced: 0, message: "MySQL belum terhubung." };
+
+  const payload = settings && typeof settings === "object" ? settings : {};
+  const rows = Object.entries(payload).filter(([_, value]) => value !== undefined && value !== null);
+  if (!rows.length) {
+    return { success: true, synced: 0, message: "Tidak ada pengaturan toko untuk disinkronkan." };
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    for (const [key, value] of rows) {
+      await conn.execute(
+        `INSERT INTO store_settings (key_name, value, updated_at)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at = VALUES(updated_at)`,
+        [key, String(value), new Date()]
+      );
+    }
+    await conn.commit();
+    return { success: true, synced: rows.length, message: "Pengaturan toko tersinkronisasi." };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+async function hydrateStoreSettingsFromDatabase(app) {
+  const pool = await getPool();
+  if (!pool) return {};
+
+  const [rows] = await pool.execute("SELECT key_name, value FROM store_settings");
+  const values = {};
+  for (const row of rows) {
+    values[row.key_name] = row.value;
+  }
+
+  if (!Object.keys(values).length) return {};
+
+  const fs = require("fs");
+  const path = require("path");
+  const { resolveDataDir } = require("./dataPath");
+  const envPath = path.join(resolveDataDir(app), ".env");
+  const lines = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf-8").split(/\r?\n/) : [];
+  const updated = [...lines];
+  for (const [key, value] of Object.entries(values)) {
+    let found = false;
+    for (let i = 0; i < updated.length; i += 1) {
+      const line = updated[i];
+      if (!line || line.trim().startsWith("#") || !line.includes("=")) continue;
+      const eq = line.indexOf("=");
+      const currentKey = line.slice(0, eq).trim();
+      if (currentKey === key) {
+        updated[i] = `${key}=${String(value)}`;
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      updated.push(`${key}=${String(value)}`);
+    }
+  }
+
+  if (!fs.existsSync(envPath) || fs.readFileSync(envPath, "utf-8") !== updated.join("\n")) {
+    fs.writeFileSync(envPath, updated.join("\n"), "utf-8");
+  }
+
+  return values;
+}
+
 module.exports = {
   testConnection,
   initializeConnection,
@@ -249,6 +343,8 @@ module.exports = {
   isConnected,
   getConfig,
   closeConnection,
+  syncStoreSettingsToDatabase,
+  hydrateStoreSettingsFromDatabase,
   loadConfigFromFile,
   saveConfigToFile,
   deleteConfigFile,

@@ -563,11 +563,241 @@ async function getOrdersByDateRange(app, { from, to }) {
   return getOrdersByDateRangeJSON(app, from, to);
 }
 
+function getAllOrdersForSync(app) {
+  const dataDir = resolveDataDir(app);
+  let files = [];
+  try {
+    files = fs.readdirSync(dataDir);
+  } catch {
+    return [];
+  }
+
+  const results = [];
+  for (const file of files) {
+    const match = file.match(/^orders-(\d{4}-\d{2}-\d{2})\.json$/);
+    if (!match) continue;
+    const filePath = path.join(dataDir, file);
+    try {
+      const raw = fs.readFileSync(filePath, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        results.push(...parsed.filter((item) => item && item.id));
+      }
+    } catch {
+      // skip corrupted files
+    }
+  }
+
+  return results.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+}
+
+async function syncOrderToDatabase(app, order) {
+  if (!db.isConnected() || !order || !order.id) return { success: false, synced: 0, message: "MySQL belum terhubung." };
+
+  const pool = await db.getPool();
+  const conn = await pool.getConnection();
+  try {
+    const createdAt = new Date(order.createdAt || Date.now());
+    const createdDate = createdAt.toISOString().split("T")[0];
+    const paidAt = new Date(order.paidAt || order.createdAt || Date.now());
+
+    await conn.execute(
+      `INSERT INTO orders (id, subtotal, payment_method, cash_given, change_amount, qris_meta, status, created_at, created_date, paid_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         subtotal = VALUES(subtotal),
+         payment_method = VALUES(payment_method),
+         cash_given = VALUES(cash_given),
+         change_amount = VALUES(change_amount),
+         qris_meta = VALUES(qris_meta),
+         status = VALUES(status),
+         created_at = VALUES(created_at),
+         created_date = VALUES(created_date),
+         paid_at = VALUES(paid_at)`,
+      [
+        order.id,
+        Number(order.subtotal || 0),
+        order.paymentMethod || "cash",
+        order.paymentMethod === "cash" && order.cashGiven != null ? Number(order.cashGiven) : null,
+        Number(order.change || 0),
+        order.qrisMeta ? JSON.stringify(order.qrisMeta) : null,
+        order.status || "paid",
+        createdAt,
+        createdDate,
+        paidAt
+      ]
+    );
+
+    await conn.execute("DELETE FROM order_items WHERE order_id = ?", [order.id]);
+    for (const item of order.items || []) {
+      await conn.execute(
+        `INSERT INTO order_items (line_id, order_id, title, price, qty, line_total, sku, variant_title, product_handle, retur_status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           title = VALUES(title),
+           price = VALUES(price),
+           qty = VALUES(qty),
+           line_total = VALUES(line_total),
+           sku = VALUES(sku),
+           variant_title = VALUES(variant_title),
+           product_handle = VALUES(product_handle),
+           retur_status = VALUES(retur_status),
+           created_at = VALUES(created_at)`,
+        [
+          item.lineId,
+          order.id,
+          item.title,
+          Number(item.price || 0),
+          Number(item.qty || 0),
+          Number(item.lineTotal || 0),
+          item.sku || null,
+          item.variantTitle || null,
+          item.productHandle || null,
+          item.returStatus || null,
+          createdAt
+        ]
+      );
+    }
+
+    await conn.execute("DELETE FROM order_retur_history WHERE order_id = ?", [order.id]);
+    for (const rh of order.returHistory || []) {
+      await conn.execute(
+        `INSERT INTO order_retur_history (order_id, line_id, title, price, qty, line_total, reason, retur_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          order.id,
+          rh.lineId,
+          rh.title,
+          Number(rh.price || 0),
+          Number(rh.qty || 0),
+          Number(rh.lineTotal || 0),
+          rh.reason || "",
+          rh.returAt ? new Date(rh.returAt) : new Date()
+        ]
+      );
+    }
+
+    return { success: true, synced: 1, message: "Order berhasil disinkronkan." };
+  } catch (err) {
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+async function syncAllOrdersToDatabase(app) {
+  if (!db.isConnected()) {
+    return { success: false, synced: 0, message: "MySQL belum terhubung." };
+  }
+
+  const orders = getAllOrdersForSync(app);
+  if (!orders.length) {
+    return { success: true, synced: 0, message: "Tidak ada order lokal untuk disinkronkan." };
+  }
+
+  const pool = await db.getPool();
+  const conn = await pool.getConnection();
+  try {
+    let synced = 0;
+    for (const order of orders) {
+      const createdAt = new Date(order.createdAt || Date.now());
+      const createdDate = createdAt.toISOString().split("T")[0];
+      const paidAt = new Date(order.paidAt || order.createdAt || Date.now());
+
+      await conn.execute(
+        `INSERT INTO orders (id, subtotal, payment_method, cash_given, change_amount, qris_meta, status, created_at, created_date, paid_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           subtotal = VALUES(subtotal),
+           payment_method = VALUES(payment_method),
+           cash_given = VALUES(cash_given),
+           change_amount = VALUES(change_amount),
+           qris_meta = VALUES(qris_meta),
+           status = VALUES(status),
+           created_at = VALUES(created_at),
+           created_date = VALUES(created_date),
+           paid_at = VALUES(paid_at)`,
+        [
+          order.id,
+          Number(order.subtotal || 0),
+          order.paymentMethod || "cash",
+          order.paymentMethod === "cash" && order.cashGiven != null ? Number(order.cashGiven) : null,
+          Number(order.change || 0),
+          order.qrisMeta ? JSON.stringify(order.qrisMeta) : null,
+          order.status || "paid",
+          createdAt,
+          createdDate,
+          paidAt
+        ]
+      );
+
+      await conn.execute("DELETE FROM order_items WHERE order_id = ?", [order.id]);
+      for (const item of order.items || []) {
+        await conn.execute(
+          `INSERT INTO order_items (line_id, order_id, title, price, qty, line_total, sku, variant_title, product_handle, retur_status, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+             title = VALUES(title),
+             price = VALUES(price),
+             qty = VALUES(qty),
+             line_total = VALUES(line_total),
+             sku = VALUES(sku),
+             variant_title = VALUES(variant_title),
+             product_handle = VALUES(product_handle),
+             retur_status = VALUES(retur_status),
+             created_at = VALUES(created_at)`,
+          [
+            item.lineId,
+            order.id,
+            item.title,
+            Number(item.price || 0),
+            Number(item.qty || 0),
+            Number(item.lineTotal || 0),
+            item.sku || null,
+            item.variantTitle || null,
+            item.productHandle || null,
+            item.returStatus || null,
+            createdAt
+          ]
+        );
+      }
+
+      await conn.execute("DELETE FROM order_retur_history WHERE order_id = ?", [order.id]);
+      for (const rh of order.returHistory || []) {
+        await conn.execute(
+          `INSERT INTO order_retur_history (order_id, line_id, title, price, qty, line_total, reason, retur_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            order.id,
+            rh.lineId,
+            rh.title,
+            Number(rh.price || 0),
+            Number(rh.qty || 0),
+            Number(rh.lineTotal || 0),
+            rh.reason || "",
+            rh.returAt ? new Date(rh.returAt) : new Date()
+          ]
+        );
+      }
+      synced += 1;
+    }
+
+    return { success: true, synced, message: `${synced} order tersinkronisasi.` };
+  } catch (err) {
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 module.exports = {
   getTodayOrders,
   createOrder,
   returOrderItem,
   getOrderById,
   getTodayOrdersSummary,
-  getOrdersByDateRange
+  getOrdersByDateRange,
+  getAllOrdersForSync,
+  syncOrderToDatabase,
+  syncAllOrdersToDatabase
 };

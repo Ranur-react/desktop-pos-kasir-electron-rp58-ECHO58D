@@ -17,6 +17,12 @@ function formatDate(value) {
   }).format(new Date(value));
 }
 
+function getDefaultAllHistoryFrom() {
+  const date = new Date();
+  date.setDate(date.getDate() - 365);
+  return date.toISOString().split("T")[0];
+}
+
 const CART_PAGE_SIZE = 10;
 const ORDER_PAGE_SIZE = 8;
 
@@ -50,7 +56,7 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
   const [expandedOrderId, setExpandedOrderId] = useState(null);
 
   const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
-  const [allHistoryFrom, setAllHistoryFrom] = useState(todayStr);
+  const [allHistoryFrom, setAllHistoryFrom] = useState(() => getDefaultAllHistoryFrom());
   const [allHistoryTo, setAllHistoryTo] = useState(todayStr);
   const [allHistoryOrders, setAllHistoryOrders] = useState([]);
   const [allHistoryLoading, setAllHistoryLoading] = useState(false);
@@ -806,6 +812,17 @@ const ALL_HISTORY_PAGE_SIZE = 10;
 function OrderTable({ orders, emptyMsg, expandedId, setExpandedId, canRetur, setReturTarget }) {
   const totalPages = Math.max(1, Math.ceil(orders.length / ALL_HISTORY_PAGE_SIZE));
   const [page, setPage] = useState(0);
+
+  useEffect(() => {
+    setPage(0);
+  }, [orders.length]);
+
+  useEffect(() => {
+    if (page > totalPages - 1) {
+      setPage(Math.max(0, totalPages - 1));
+    }
+  }, [page, totalPages]);
+
   const paged = orders.slice(page * ALL_HISTORY_PAGE_SIZE, (page + 1) * ALL_HISTORY_PAGE_SIZE);
 
   return (
@@ -980,6 +997,23 @@ function OrderHistoryPanel({
     }
   }
 
+  async function handleOnlineSync() {
+    try {
+      setAllHistoryLoading(true);
+      const result = await window.posApi.onlineSyncTransactions();
+      if (result?.success) {
+        await loadAllHistory();
+      }
+      if (result?.message) {
+        alert(result.message);
+      }
+    } catch (err) {
+      alert(err.message || "Gagal melakukan sinkronisasi online.");
+    } finally {
+      setAllHistoryLoading(false);
+    }
+  }
+
   // Auto-load when switching to "all" tab for the first time
   useEffect(() => {
     if (historyTab === "all" && !allHistoryLoaded) {
@@ -1018,7 +1052,7 @@ function OrderHistoryPanel({
             className={`oh-tab-btn${historyTab === "all" ? " oh-tab-active" : ""}`}
             onClick={() => setHistoryTab("all")}
           >
-            Semua Riwayat
+            Semua Riwayat Transaksi
           </button>
         </div>
       </div>
@@ -1095,6 +1129,13 @@ function OrderHistoryPanel({
               disabled={allHistoryLoading}
             >
               {allHistoryLoading ? "Memuat..." : "Tampilkan"}
+            </button>
+            <button
+              className="btn btn-save oh-search-btn"
+              onClick={handleOnlineSync}
+              disabled={allHistoryLoading}
+            >
+              {allHistoryLoading ? "Sinkron..." : "Online Sync"}
             </button>
           </div>
 
