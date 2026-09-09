@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const { resolveDataDir } = require("./dataPath");
 const db = require("./dbConnection");
+const apiService = require("./apiService");
 
 function getDateKey() {
   const now = new Date();
@@ -154,40 +155,106 @@ async function getTodayOrders(app) {
   return readOrders(app).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-function createOrder(app, { items, paymentMethod, cashGiven, qrisMeta }) {
-  const now = new Date();
+async function createOrder(app, payload) {
+  const {
+    items = [],
+    paymentMethod = "cash",
+    cashGiven = null,
+    qrisMeta = null,
+    idpelanggan = 0,
+    diskon = 0,
+    cashierName = "Kasir",
+    customerName = "Pelanggan Umum",
+    printAction = "hanya_cetak",
+    bankAccount = null
+  } = payload || {};
 
-  const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0);
+  const now = new Date();
+  const subtotal = items.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.qty) || 0), 0);
+  const totalBayar = Math.max(subtotal - Number(diskon || 0), 0);
+  const cashNum = Number(cashGiven);
+  const change = paymentMethod === "cash" && Number.isFinite(cashNum) ? Math.max(cashNum - totalBayar, 0) : 0;
+
+  const localId = `ORD-${now.getTime()}`;
+  let nofaktur = null;
+  let idJual = null;
+  let synced = false;
+  let syncError = null;
+
+  // 1. Attempt online REST API transaction to web hosting
+  try {
+    const salePayload = {
+      idpelanggan: Number(idpelanggan) || 0,
+      subtotal: subtotal,
+      diskon_jual: Number(diskon) || 0,
+      total_bayar: totalBayar,
+      metode_bayar: paymentMethod === "cash" ? "tunai" : (paymentMethod === "qris" || paymentMethod === "card" ? "card" : "hutang"),
+      jumlah_uang: paymentMethod === "cash" ? cashNum : totalBayar,
+      bank_account: bankAccount,
+      aksi: printAction || "hanya_cetak",
+      offline_id: localId,
+      items: items.map((item) => ({
+        id_produk: item.productId || item.id_produk || item.id,
+        jumlah: Number(item.qty) || 1,
+        harga_jual: Number(item.price) || 0,
+        satuan_id: item.satuan_id || 1,
+        harga_id: item.harga_id || 0
+      }))
+    };
+
+    const apiRes = await apiService.submitTransaction(app, salePayload);
+    if (apiRes && apiRes.status === "success" && apiRes.data) {
+      nofaktur = apiRes.data.nofaktur;
+      idJual = apiRes.data.id_jual;
+      synced = true;
+    }
+  } catch (err) {
+    console.warn("[POS] Online transaction failed, saving to offline queue:", err.message);
+    syncError = err.message;
+    synced = false;
+  }
+
   const order = {
-    id: `ORD-${now.getTime()}`,
+    id: localId,
+    nofaktur: nofaktur || null,
+    id_jual: idJual || null,
+    synced: synced,
+    syncError: syncError,
+    idpelanggan: Number(idpelanggan) || 0,
+    customerName: customerName,
+    cashierName: cashierName,
     items: items.map((item, idx) => ({
       lineId: `LN-${now.getTime()}-${idx}`,
-      title: item.title,
-      price: Number(item.price),
-      qty: Number(item.qty),
-      lineTotal: Number(item.price) * Number(item.qty),
-      sku: item.sku || null,
+      productId: item.productId || item.id_produk || item.id,
+      title: item.title || item.nama_produk,
+      price: Number(item.price) || 0,
+      qty: Number(item.qty) || 1,
+      lineTotal: (Number(item.price) || 0) * (Number(item.qty) || 1),
+      sku: item.sku || item.barcode || null,
+      barcode: item.barcode || item.sku || null,
       variantTitle: item.variantTitle || null,
       productHandle: item.productHandle || null,
       returStatus: null
     })),
     subtotal,
+    diskon: Number(diskon) || 0,
+    totalBayar,
     paymentMethod,
-    cashGiven: paymentMethod === "cash" ? Number(cashGiven) : null,
-    change: paymentMethod === "cash" ? Number(cashGiven) - subtotal : 0,
-    qrisMeta: paymentMethod === "qris" ? (qrisMeta || null) : null,
+    cashGiven: paymentMethod === "cash" ? cashNum : null,
+    change,
+    qrisMeta: paymentMethod === "qris" ? (qrisMeta || { paid: true }) : null,
     status: "paid",
     returHistory: [],
     createdAt: now.toISOString(),
     paidAt: now.toISOString()
   };
 
-  // Always keep JSON history as local backup.
+  // Always keep JSON history as local backup / offline queue
   const orders = readOrders(app);
   orders.push(order);
   writeOrders(app, orders);
 
-  // Mirror to SQL when available.
+  // Mirror to SQL when direct connection is configured
   if (db.isConnected()) {
     writeOrderToDB(order).catch((err) => {
       console.error("Async DB write order failed:", err);
@@ -686,108 +753,145 @@ async function syncOrderToDatabase(app, order) {
 }
 
 async function syncAllOrdersToDatabase(app) {
-  if (!db.isConnected()) {
-    return { success: false, synced: 0, message: "MySQL belum terhubung." };
-  }
+  const orders = readOrders(app);
+  const unSyncedOrders = orders.filter((o) => !o.synced);
 
-  const orders = getAllOrdersForSync(app);
-  if (!orders.length) {
-    return { success: true, synced: 0, message: "Tidak ada order lokal untuk disinkronkan." };
-  }
+  let apiSyncedCount = 0;
+  let apiMessage = "";
 
-  const pool = await db.getPool();
-  const conn = await pool.getConnection();
-  try {
-    let synced = 0;
-    for (const order of orders) {
-      const createdAt = new Date(order.createdAt || Date.now());
-      const createdDate = createdAt.toISOString().split("T")[0];
-      const paidAt = new Date(order.paidAt || order.createdAt || Date.now());
+  // 1. Sync to Web Hosting API
+  if (unSyncedOrders.length > 0) {
+    try {
+      const transactionsPayload = unSyncedOrders.map((order) => {
+        const saleDate = order.createdAt ? order.createdAt.split("T")[0] : new Date().toISOString().split("T")[0];
+        const createdDateTime = order.createdAt ? order.createdAt.replace("T", " ").split(".")[0] : undefined;
 
-      await conn.execute(
-        `INSERT INTO orders (id, subtotal, payment_method, cash_given, change_amount, qris_meta, status, created_at, created_date, paid_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE
-           subtotal = VALUES(subtotal),
-           payment_method = VALUES(payment_method),
-           cash_given = VALUES(cash_given),
-           change_amount = VALUES(change_amount),
-           qris_meta = VALUES(qris_meta),
-           status = VALUES(status),
-           created_at = VALUES(created_at),
-           created_date = VALUES(created_date),
-           paid_at = VALUES(paid_at)`,
-        [
-          order.id,
-          Number(order.subtotal || 0),
-          order.paymentMethod || "cash",
-          order.paymentMethod === "cash" && order.cashGiven != null ? Number(order.cashGiven) : null,
-          Number(order.change || 0),
-          order.qrisMeta ? JSON.stringify(order.qrisMeta) : null,
-          order.status || "paid",
-          createdAt,
-          createdDate,
-          paidAt
-        ]
-      );
+        return {
+          offline_id: order.id,
+          tanggal_jual: saleDate,
+          created_at: createdDateTime,
+          idpelanggan: order.idpelanggan || 0,
+          subtotal: order.subtotal || 0,
+          diskon_jual: order.diskon || 0,
+          metode_bayar: order.paymentMethod === "cash" ? "tunai" : (order.paymentMethod === "qris" || order.paymentMethod === "card" ? "card" : "hutang"),
+          jumlah_uang: order.cashGiven != null ? order.cashGiven : (order.totalBayar || order.subtotal),
+          items: (order.items || []).map((it) => ({
+            id_produk: it.productId || it.id_produk || it.id,
+            jumlah: it.qty || 1,
+            harga_jual: it.price || 0
+          }))
+        };
+      });
 
-      await conn.execute("DELETE FROM order_items WHERE order_id = ?", [order.id]);
-      for (const item of order.items || []) {
-        await conn.execute(
-          `INSERT INTO order_items (line_id, order_id, title, price, qty, line_total, sku, variant_title, product_handle, retur_status, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON DUPLICATE KEY UPDATE
-             title = VALUES(title),
-             price = VALUES(price),
-             qty = VALUES(qty),
-             line_total = VALUES(line_total),
-             sku = VALUES(sku),
-             variant_title = VALUES(variant_title),
-             product_handle = VALUES(product_handle),
-             retur_status = VALUES(retur_status),
-             created_at = VALUES(created_at)`,
-          [
-            item.lineId,
-            order.id,
-            item.title,
-            Number(item.price || 0),
-            Number(item.qty || 0),
-            Number(item.lineTotal || 0),
-            item.sku || null,
-            item.variantTitle || null,
-            item.productHandle || null,
-            item.returStatus || null,
-            createdAt
-          ]
-        );
+      const apiRes = await apiService.syncOffline(app, transactionsPayload);
+      if (apiRes && apiRes.status === "success") {
+        const results = apiRes.results || [];
+        for (const res of results) {
+          const target = orders.find((o) => o.id === res.offline_id);
+          if (target) {
+            target.synced = true;
+            target.nofaktur = res.nofaktur;
+            target.id_jual = res.jual_id;
+            target.syncError = null;
+          }
+        }
+        writeOrders(app, orders);
+        apiSyncedCount = apiRes.synced || results.length;
+        apiMessage = apiRes.message || `${apiSyncedCount} order berhasil disinkronisasi ke server web.`;
       }
-
-      await conn.execute("DELETE FROM order_retur_history WHERE order_id = ?", [order.id]);
-      for (const rh of order.returHistory || []) {
-        await conn.execute(
-          `INSERT INTO order_retur_history (order_id, line_id, title, price, qty, line_total, reason, retur_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            order.id,
-            rh.lineId,
-            rh.title,
-            Number(rh.price || 0),
-            Number(rh.qty || 0),
-            Number(rh.lineTotal || 0),
-            rh.reason || "",
-            rh.returAt ? new Date(rh.returAt) : new Date()
-          ]
-        );
-      }
-      synced += 1;
+    } catch (apiErr) {
+      console.warn("[POS] Web API sync-offline error:", apiErr.message);
+      apiMessage = `Gagal sinkron web: ${apiErr.message}`;
     }
-
-    return { success: true, synced, message: `${synced} order tersinkronisasi.` };
-  } catch (err) {
-    throw err;
-  } finally {
-    conn.release();
   }
+
+  // 2. Also mirror to direct MySQL if connected
+  if (db.isConnected()) {
+    try {
+      const allOrders = getAllOrdersForSync(app);
+      const pool = await db.getPool();
+      const conn = await pool.getConnection();
+      try {
+        for (const order of allOrders) {
+          const createdAt = new Date(order.createdAt || Date.now());
+          const createdDate = createdAt.toISOString().split("T")[0];
+          const paidAt = new Date(order.paidAt || order.createdAt || Date.now());
+
+          await conn.execute(
+            `INSERT INTO orders (id, subtotal, payment_method, cash_given, change_amount, qris_meta, status, created_at, created_date, paid_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+               subtotal = VALUES(subtotal),
+               payment_method = VALUES(payment_method),
+               cash_given = VALUES(cash_given),
+               change_amount = VALUES(change_amount),
+               qris_meta = VALUES(qris_meta),
+               status = VALUES(status),
+               created_at = VALUES(created_at),
+               created_date = VALUES(created_date),
+               paid_at = VALUES(paid_at)`,
+            [
+              order.id,
+              Number(order.subtotal || 0),
+              order.paymentMethod || "cash",
+              order.paymentMethod === "cash" && order.cashGiven != null ? Number(order.cashGiven) : null,
+              Number(order.change || 0),
+              order.qrisMeta ? JSON.stringify(order.qrisMeta) : null,
+              order.status || "paid",
+              createdAt,
+              createdDate,
+              paidAt
+            ]
+          );
+
+          await conn.execute("DELETE FROM order_items WHERE order_id = ?", [order.id]);
+          for (const item of order.items || []) {
+            await conn.execute(
+              `INSERT INTO order_items (line_id, order_id, title, price, qty, line_total, sku, variant_title, product_handle, retur_status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON DUPLICATE KEY UPDATE
+                 title = VALUES(title),
+                 price = VALUES(price),
+                 qty = VALUES(qty),
+                 line_total = VALUES(line_total),
+                 sku = VALUES(sku),
+                 variant_title = VALUES(variant_title),
+                 product_handle = VALUES(product_handle),
+                 retur_status = VALUES(retur_status),
+                 created_at = VALUES(created_at)`,
+              [
+                item.lineId,
+                order.id,
+                item.title,
+                Number(item.price || 0),
+                Number(item.qty || 0),
+                Number(item.lineTotal || 0),
+                item.sku || null,
+                item.variantTitle || null,
+                item.productHandle || null,
+                item.returStatus || null,
+                createdAt
+              ]
+            );
+          }
+        }
+      } finally {
+        conn.release();
+      }
+    } catch (mysqlErr) {
+      console.warn("[POS] Direct MySQL sync warning:", mysqlErr.message);
+    }
+  }
+
+  if (unSyncedOrders.length === 0) {
+    return { success: true, synced: 0, message: "Semua order sudah tersinkronisasi." };
+  }
+
+  return {
+    success: apiSyncedCount > 0,
+    synced: apiSyncedCount,
+    message: apiMessage || `${apiSyncedCount} order tersinkronisasi.`
+  };
 }
 
 module.exports = {

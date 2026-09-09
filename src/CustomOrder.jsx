@@ -27,12 +27,14 @@ const CART_PAGE_SIZE = 10;
 const ORDER_PAGE_SIZE = 8;
 
 export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder = true, canRetur = true, compactMode = false }) {
-  const [catalogSource, setCatalogSource] = useState("csv");
+  const [catalogSource, setCatalogSource] = useState("api"); // "api" | "csv" | "manual"
   const [catalog, setCatalog] = useState({
     products: [],
     categories: [],
     sourceFilesCount: 0,
-    loadedAt: null
+    loadedAt: null,
+    source: "online",
+    warning: null
   });
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState("");
@@ -40,11 +42,27 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
   const [selectedProductId, setSelectedProductId] = useState(null);
   const [manualPrice, setManualPrice] = useState("");
   const [manualQty, setManualQty] = useState(1);
+  const [viewMode, setViewMode] = useState("grid"); // "grid" | "list"
 
+  // Cart state
   const [cart, setCart] = useState([]);
   const [cartSearch, setCartSearch] = useState("");
   const [cartPage, setCartPage] = useState(0);
+  const [diskon, setDiskon] = useState(0);
+  const [paymentMethod, setPaymentMethod] = useState("cash"); // "cash" | "card" | "hutang"
 
+  // Customers state
+  const [customers, setCustomers] = useState([{ id: 0, nama: "Pelanggan Umum", nohp: "-", alamat: "" }]);
+  const [selectedCustomer, setSelectedCustomer] = useState({ id: 0, nama: "Pelanggan Umum", nohp: "-", alamat: "" });
+  const [showAddCustomer, setShowAddCustomer] = useState(false);
+  const [newCustomerForm, setNewCustomerForm] = useState({ nama: "", nohp: "", alamat: "" });
+  const [customerSaving, setCustomerSaving] = useState(false);
+
+  // Pending transactions state
+  const [pendingCarts, setPendingCarts] = useState([]);
+  const [showPendingModal, setShowPendingModal] = useState(false);
+
+  // Modals & History
   const [showPayment, setShowPayment] = useState(false);
   const [returTarget, setReturTarget] = useState(null);
 
@@ -88,41 +106,110 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
     customQtyRef.current?.select?.();
   }
 
-  useEffect(() => {
-    loadCatalog(false).catch(() => {});
-  }, [catalogSource]);
+  function playScannerBeep() {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(1760, ctx.currentTime);
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.07);
+    } catch {}
+  }
 
-  useEffect(() => {
-    // Saat halaman order terbuka, fokus awal langsung ke pencarian produk.
-    focusCatalogSearch();
-  }, []);
+  async function loadCustomers() {
+    try {
+      const res = await window.posApi.getOnlineCustomers();
+      if (res && res.data) {
+        setCustomers(res.data);
+        if (res.data.length > 0 && (!selectedCustomer || selectedCustomer.id === 0)) {
+          setSelectedCustomer(res.data[0]);
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to load customers:", err.message);
+    }
+  }
 
   async function loadCatalog(forceReload) {
     try {
       setCatalogLoading(true);
-      if (catalogSource === "csv") {
+      if (catalogSource === "api") {
+        setStatus(forceReload ? "Memperbarui produk dari Web Server..." : "Memuat produk dari Web Server...");
+        const res = await window.posApi.getOnlineProducts({
+          search: catalogSearch.trim() || undefined
+        });
+
+        if (res && res.products) {
+          const rawProds = res.products;
+          const formatted = rawProds.map((p) => ({
+            id: String(p.id_produk),
+            productId: p.id_produk,
+            title: p.nama_produk,
+            category: p.kategori_nama || "Umum",
+            kategori_id: p.kategori_id,
+            price: Number(p.harga) || 0,
+            stock: Number(p.stok) || 0,
+            barcode: p.barcode || "",
+            sku: p.barcode || "",
+            unit: p.satuan_nama || "Pcs",
+            limitHarian: p.limit_harian || 0,
+            isRegisteredOnly: Boolean(p.khusus_pelanggan_terdaftar),
+            image: p.image || "",
+            variants: [
+              {
+                id: String(p.id_produk),
+                title: p.satuan_nama || "Pcs",
+                price: Number(p.harga) || 0,
+                sku: p.barcode || ""
+              }
+            ]
+          }));
+
+          const categories = [
+            ...new Set(formatted.map((p) => p.category).filter(Boolean))
+          ].sort((a, b) => a.localeCompare(b, "id"));
+
+          setCatalog({
+            products: formatted,
+            categories,
+            sourceFilesCount: 1,
+            loadedAt: new Date().toISOString(),
+            source: res.source,
+            warning: res.warning
+          });
+
+          if (formatted.length > 0 && !selectedProductId) {
+            setSelectedProductId(formatted[0].id);
+          }
+
+          if (res.warning) {
+            setStatus(`⚠️ ${res.warning} (${formatted.length} produk tersimpan lokal)`);
+          } else {
+            setStatus(`✓ ${formatted.length} produk realtime tersinkronisasi dari Web POS.`);
+          }
+        }
+      } else if (catalogSource === "csv") {
         setStatus(forceReload ? "Memuat ulang katalog CSV..." : "Memuat katalog CSV Shopify...");
-      } else {
-        setStatus("Memuat katalog produk manual...");
-      }
-
-      const data = catalogSource === "csv"
-        ? (forceReload ? await window.posApi.reloadCatalog() : await window.posApi.getCatalog())
-        : await window.posApi.getManualCatalog();
-
-      setCatalog(data);
-      if (data.products.length > 0) {
-        const currentExists = data.products.some((p) => p.id === selectedProductId);
-        if (!currentExists) {
+        const data = forceReload ? await window.posApi.reloadCatalog() : await window.posApi.getCatalog();
+        setCatalog(data);
+        if (data.products.length > 0 && !selectedProductId) {
           setSelectedProductId(data.products[0].id);
         }
+        setStatus(`${data.products.length} produk bersumber dari file CSV.`);
       } else {
-        setSelectedProductId(null);
-      }
-      if (catalogSource === "csv") {
-        const sourceDirText = data.sourceDirectory ? ` (folder: ${data.sourceDirectory})` : "";
-        setStatus(`${data.products.length} produk bersumber dari ${data.sourceFilesCount} file CSV${sourceDirText}`);
-      } else {
+        setStatus("Memuat katalog produk manual...");
+        const data = await window.posApi.getManualCatalog();
+        setCatalog(data);
+        if (data.products.length > 0 && !selectedProductId) {
+          setSelectedProductId(data.products[0].id);
+        }
         setStatus(`${data.products.length} produk manual aktif.`);
       }
     } catch (err) {
@@ -131,6 +218,15 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
       setCatalogLoading(false);
     }
   }
+
+  useEffect(() => {
+    loadCatalog(false).catch(() => {});
+    loadCustomers().catch(() => {});
+  }, [catalogSource]);
+
+  useEffect(() => {
+    focusCatalogSearch();
+  }, []);
 
   const selectedProduct = useMemo(() => {
     if (!selectedProductId) return null;
@@ -145,27 +241,24 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
       if (!categoryMatch) return false;
       if (!q) return true;
 
-      const skuMatch = p.variants.some((v) => (v.sku || "").toLowerCase().includes(q));
+      const skuMatch = p.variants?.some((v) => (v.sku || "").toLowerCase().includes(q)) || (p.barcode && p.barcode.toLowerCase().includes(q));
       return (
         p.title.toLowerCase().includes(q) ||
-        (p.vendor || "").toLowerCase().includes(q) ||
         (p.category || "").toLowerCase().includes(q) ||
         skuMatch
       );
     });
   }, [catalog.products, activeCategory, catalogSearch]);
 
-  useEffect(() => {
-    const q = catalogSearch.trim();
-    if (!q) return;
-    if (filteredProducts.length > 0) {
-      setSelectedProductId(filteredProducts[0].id);
-    }
-  }, [catalogSearch, filteredProducts]);
+  const isCustomFallbackMode = filteredProducts.length === 0 && Boolean(catalogSearch.trim()) && catalogSource !== "api";
 
-  const isCustomFallbackMode = filteredProducts.length === 0 && Boolean(catalogSearch.trim());
+  const cartSubtotal = useMemo(() => {
+    return cart.reduce((s, item) => s + item.price * item.qty, 0);
+  }, [cart]);
 
-  const cartTotal = cart.reduce((s, item) => s + item.price * item.qty, 0);
+  const grandTotal = useMemo(() => {
+    return Math.max(cartSubtotal - (Number(diskon) || 0), 0);
+  }, [cartSubtotal, diskon]);
 
   const filteredCart = useMemo(() => {
     if (!cartSearch.trim()) return cart;
@@ -176,40 +269,61 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
   const cartTotalPages = Math.max(1, Math.ceil(filteredCart.length / CART_PAGE_SIZE));
   const pagedCart = filteredCart.slice(cartPage * CART_PAGE_SIZE, (cartPage + 1) * CART_PAGE_SIZE);
 
-  const filteredOrders = useMemo(() => {
-    if (!orderSearch.trim()) return orders;
-    const q = orderSearch.toLowerCase();
-
-    return orders.filter(
-      (o) =>
-        o.id.toLowerCase().includes(q) ||
-        o.paymentMethod.toLowerCase().includes(q) ||
-        o.items.some((i) => i.title.toLowerCase().includes(q) || (i.sku || "").toLowerCase().includes(q))
-    );
-  }, [orders, orderSearch]);
-
-  const orderTotalPages = Math.max(1, Math.ceil(filteredOrders.length / ORDER_PAGE_SIZE));
-  const pagedOrders = filteredOrders.slice(orderPage * ORDER_PAGE_SIZE, (orderPage + 1) * ORDER_PAGE_SIZE);
-
   function addVariantToCart(product, variant) {
     if (!canCreateOrder) {
       setStatus("Akun ini tidak memiliki akses membuat order.");
       return;
     }
 
-    setCart((prev) => [
-      ...prev,
-      {
-        id: Date.now() + Math.random(),
-        title: `${product.title} - ${variant.title}`,
-        price: Number(variant.price) || 0,
-        qty: 1,
-        sku: variant.sku || null,
-        variantTitle: variant.title || null,
-        productHandle: product.handle || null
-      }
-    ]);
-    setStatus("");
+    const pId = product.productId || product.id;
+    const existingIdx = cart.findIndex((i) => (i.productId && i.productId === pId) || i.title === product.title);
+
+    if (existingIdx >= 0) {
+      setCart((prev) =>
+        prev.map((item, idx) =>
+          idx === existingIdx ? { ...item, qty: item.qty + 1 } : item
+        )
+      );
+    } else {
+      setCart((prev) => [
+        ...prev,
+        {
+          id: Date.now() + Math.random(),
+          productId: pId,
+          id_produk: pId,
+          title: product.title,
+          price: Number(variant?.price || product.price) || 0,
+          qty: 1,
+          sku: variant?.sku || product.barcode || null,
+          barcode: product.barcode || variant?.sku || null,
+          variantTitle: variant?.title || null,
+          productHandle: product.handle || null,
+          stock: product.stock
+        }
+      ]);
+    }
+    setStatus(`✓ "${product.title}" masuk keranjang.`);
+  }
+
+  function handleBarcodeScan(inputQuery) {
+    const q = String(inputQuery || "").trim().toLowerCase();
+    if (!q) return false;
+
+    const match = catalog.products.find(
+      (p) => (p.barcode && p.barcode.toLowerCase() === q) ||
+             (p.sku && p.sku.toLowerCase() === q) ||
+             (p.variants && p.variants.some((v) => (v.sku || "").toLowerCase() === q))
+    );
+
+    if (match) {
+      playScannerBeep();
+      addVariantToCart(match, match.variants?.[0]);
+      setCatalogSearch("");
+      focusCatalogSearch();
+      return true;
+    }
+
+    return false;
   }
 
   function addManualFallbackToCart() {
@@ -267,7 +381,72 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
     );
   }
 
-  async function handlePaymentDone(method, cashGiven, qrisMeta = null) {
+  function clearCart() {
+    if (cart.length === 0) return;
+    setCart([]);
+    setDiskon(0);
+    setStatus("Keranjang dikosongkan.");
+    focusCatalogSearch();
+  }
+
+  function handleHoldPending() {
+    if (cart.length === 0) {
+      setStatus("Keranjang kosong, tidak ada order untuk di-pending.");
+      return;
+    }
+
+    const now = new Date();
+    const pendingItem = {
+      id: `PND-${now.getTime()}`,
+      time: now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
+      customer: selectedCustomer,
+      items: [...cart],
+      diskon: Number(diskon) || 0,
+      total: grandTotal
+    };
+
+    setPendingCarts((prev) => [pendingItem, ...prev]);
+    setCart([]);
+    setDiskon(0);
+    setStatus(`✓ Order berhasil di-pending (${pendingCarts.length + 1} order tersimpan).`);
+    focusCatalogSearch();
+  }
+
+  function restorePendingCart(pendingItem) {
+    setCart(pendingItem.items);
+    setDiskon(pendingItem.diskon || 0);
+    if (pendingItem.customer) {
+      setSelectedCustomer(pendingItem.customer);
+    }
+    setPendingCarts((prev) => prev.filter((p) => p.id !== pendingItem.id));
+    setShowPendingModal(false);
+    setStatus(`✓ Order "${pendingItem.id}" dipulihkan.`);
+    focusCatalogSearch();
+  }
+
+  async function handleQuickAddCustomer(e) {
+    e.preventDefault();
+    if (!newCustomerForm.nama.trim()) return;
+
+    try {
+      setCustomerSaving(true);
+      const res = await window.posApi.createOnlineCustomer(newCustomerForm);
+      if (res && res.data) {
+        const added = res.data;
+        setCustomers((prev) => [added, ...prev]);
+        setSelectedCustomer(added);
+        setShowAddCustomer(false);
+        setNewCustomerForm({ nama: "", nohp: "", alamat: "" });
+        setStatus(`✓ Pelanggan "${added.nama}" berhasil ditambahkan.`);
+      }
+    } catch (err) {
+      setStatus(`Gagal tambah pelanggan: ${err.message}`);
+    } finally {
+      setCustomerSaving(false);
+    }
+  }
+
+  async function handlePaymentDone(method, cashGiven, qrisMeta = null, printAction = "hanya_cetak") {
     if (!canCreateOrder) {
       setStatus("Akun ini tidak memiliki akses membuat order.");
       return;
@@ -275,29 +454,42 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
 
     try {
       setLoading(true);
-      setStatus("Memproses pembayaran...");
+      setStatus("Memproses transaksi...");
 
       const result = await window.posApi.createOrder({
-        items: cart.map(({ title, price, qty, sku, variantTitle, productHandle }) => ({
+        items: cart.map(({ productId, id_produk, title, price, qty, sku, barcode, variantTitle, productHandle, satuan_id, harga_id }) => ({
+          productId: productId || id_produk,
+          id_produk: productId || id_produk,
           title,
           price,
           qty,
-          sku,
+          sku: barcode || sku,
+          barcode: barcode || sku,
           variantTitle,
-          productHandle
+          productHandle,
+          satuan_id,
+          harga_id
         })),
+        idpelanggan: selectedCustomer?.id || 0,
+        customerName: selectedCustomer?.nama || "Pelanggan Umum",
+        diskon: Number(diskon) || 0,
         paymentMethod: method,
         cashGiven: method === "cash" ? Number(cashGiven) : null,
-        qrisMeta: method === "qris" ? qrisMeta : null
+        qrisMeta: method === "qris" ? qrisMeta : null,
+        printAction
       });
 
       setCart([]);
+      setDiskon(0);
       setCartPage(0);
       setShowPayment(false);
-      setStatus(`Pembayaran berhasil. ${result.printResult?.message || ""}`);
+
+      const invoiceNum = result.order?.nofaktur || result.order?.id;
+      setStatus(`✓ Transaksi berhasil (#${invoiceNum}). ${result.printResult?.message || ""}`);
       onRefresh();
+      focusCatalogSearch();
     } catch (err) {
-      setStatus(`Gagal: ${err.message}`);
+      setStatus(`Gagal transaksi: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -329,29 +521,25 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
       const isTyping = targetTag === "input" || targetTag === "textarea" || targetTag === "select" || e.target?.isContentEditable;
       const key = e.key.toLowerCase();
 
-      if ((e.ctrlKey || e.metaKey) && key === "k") {
+      // [ F1 ]: Switch to Order History
+      if (e.key === "F1") {
+        e.preventDefault();
+        setHistoryTab("today");
+        return;
+      }
+
+      // [ F4 ]: Focus search / barcode scanner
+      if (e.key === "F4") {
         e.preventDefault();
         focusCatalogSearch();
         return;
       }
 
-      if ((e.ctrlKey || e.metaKey) && key === "l") {
-        e.preventDefault();
-        cartSearchRef.current?.focus();
-        return;
-      }
-
-      if ((e.ctrlKey || e.metaKey) && key === "r") {
-        e.preventDefault();
-        loadCatalog(true).catch(() => {});
-        return;
-      }
-
-      if ((e.ctrlKey || e.metaKey) && key === "b") {
+      // [ F5 ]: Open payment modal
+      if (e.key === "F5") {
         e.preventDefault();
         if (canCreateOrder && cart.length > 0 && !loading) {
           setShowPayment(true);
-          // Blur active input so modal keyboard handlers get clean events
           if (document.activeElement instanceof HTMLElement) {
             document.activeElement.blur();
           }
@@ -359,169 +547,146 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
         return;
       }
 
-      if ((e.altKey && key === "s") || (e.altKey && key === "h")) {
+      // [ F11 ]: Hold / Pending transaction
+      if (e.key === "F11") {
         e.preventDefault();
-        if (key === "s") setHistoryTab("summary");
-        if (key === "h") setHistoryTab("today");
+        handleHoldPending();
         return;
       }
 
-      if (e.key === "Enter" && !isTyping && document.activeElement !== customPriceRef.current && document.activeElement !== customQtyRef.current) {
-        e.preventDefault();
-        focusCatalogSearch();
+      // Escape: Close modals
+      if (e.key === "Escape") {
+        if (showPayment) setShowPayment(false);
+        if (showAddCustomer) setShowAddCustomer(false);
+        if (showPendingModal) setShowPendingModal(false);
+        if (returTarget) setReturTarget(null);
         return;
       }
 
       if (e.key === "Enter" && document.activeElement === catalogSearchRef.current) {
         e.preventDefault();
-        if (!canCreateOrder) return;
-
-        if (isCustomFallbackMode) {
-          focusCustomPrice();
-          return;
+        const scanned = handleBarcodeScan(catalogSearch);
+        if (!scanned) {
+          if (filteredProducts.length === 1) {
+            playScannerBeep();
+            addVariantToCart(filteredProducts[0], filteredProducts[0].variants?.[0]);
+            setCatalogSearch("");
+            focusCatalogSearch();
+          } else if (isCustomFallbackMode) {
+            focusCustomPrice();
+          }
         }
-
-        if (selectedProduct?.variants?.length > 0) {
-          addVariantToCart(selectedProduct, selectedProduct.variants[0]);
-        }
-        return;
-      }
-
-      if ((e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "ArrowLeft" || e.key === "ArrowRight") &&
-          (document.activeElement === catalogSearchRef.current || !isTyping) &&
-          !e.ctrlKey && !e.metaKey) {
-        if (filteredProducts.length === 0) return;
-        e.preventDefault();
-        const currentIndex = filteredProducts.findIndex((p) => p.id === selectedProductId);
-        const delta = (e.key === "ArrowDown" || e.key === "ArrowRight") ? 1 : -1;
-        const nextIndex = Math.min(Math.max(currentIndex + delta, 0), filteredProducts.length - 1);
-        setSelectedProductId(filteredProducts[nextIndex].id);
-        return;
-      }
-
-      if (e.key === "Tab" && document.activeElement === catalogSearchRef.current && isCustomFallbackMode) {
-        e.preventDefault();
-        if (!canCreateOrder) return;
-        focusCustomPrice();
-        return;
-      }
-
-      if (e.key === "Tab" && document.activeElement === customPriceRef.current) {
-        e.preventDefault();
-        focusCustomQty();
-        return;
-      }
-
-      if (e.key === "Tab" && document.activeElement === customQtyRef.current) {
-        e.preventDefault();
-        addManualFallbackToCart();
-        return;
-      }
-
-      if (e.key === "Enter" && document.activeElement === customPriceRef.current) {
-        e.preventDefault();
-        focusCustomQty();
-        return;
-      }
-
-      if (e.key === "Enter" && document.activeElement === customQtyRef.current) {
-        e.preventDefault();
-        addManualFallbackToCart();
         return;
       }
 
       if (isTyping && !(e.ctrlKey || e.metaKey)) return;
 
-      if ((e.ctrlKey || e.metaKey) && key === "backspace") {
+      if ((e.ctrlKey || e.metaKey) && key === "b") {
         e.preventDefault();
-        if (cart.length > 0) {
-          const last = cart[cart.length - 1];
-          removeFromCart(last.id);
+        if (canCreateOrder && cart.length > 0 && !loading) {
+          setShowPayment(true);
+          if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+          }
         }
-      }
-
-      if ((e.ctrlKey || e.metaKey) && key === "arrowup") {
-        e.preventDefault();
-        if (cart.length > 0) {
-          const last = cart[cart.length - 1];
-          updateQty(last.id, 1);
-        }
-      }
-
-      if ((e.ctrlKey || e.metaKey) && key === "arrowdown") {
-        e.preventDefault();
-        if (cart.length > 0) {
-          const last = cart[cart.length - 1];
-          updateQty(last.id, -1);
-        }
+        return;
       }
     }
 
     window.addEventListener("keydown", onKeydown);
     return () => window.removeEventListener("keydown", onKeydown);
-}, [cart, loading, canCreateOrder, isCustomFallbackMode, selectedProduct, selectedProductId, filteredProducts, manualPrice, manualQty, catalogSearch]);
+  }, [cart, loading, canCreateOrder, isCustomFallbackMode, selectedProduct, filteredProducts, catalogSearch, showPayment, showAddCustomer, showPendingModal, returTarget, grandTotal]);
 
   return (
     <div className={`custom-order-shell ${compactMode ? "compact-order-shell" : ""}`}>
-      <section className="panel order-shortcut-panel">
-        <h3>Shortcut Order</h3>
-        <p className="small-text">
-          Ctrl+K: Cari produk | Ctrl+L: Cari keranjang | Ctrl+B: Bayar | Ctrl+R: Reload CSV | Ctrl+Backspace: Hapus item terakhir | Ctrl+ArrowUp/ArrowDown: Qty item terakhir | Alt+S: Summary | Alt+H: Riwayat
+      {/* DreamPOS Top Shortcuts Banner */}
+      <section className="panel order-shortcut-panel" style={{ background: "#f8fafc", padding: "8px 14px", marginBottom: "10px" }}>
+        <p className="small-text" style={{ margin: 0, fontWeight: 600, color: "#334155" }}>
+          <strong style={{ color: "#0d9488" }}>[ F4 ]</strong> Scan Barcode / Cari Produk &nbsp;|&nbsp;
+          <strong style={{ color: "#0d9488" }}>[ F5 ]</strong> Bayar &nbsp;|&nbsp;
+          <strong style={{ color: "#7c3aed" }}>[ F11 ]</strong> Pending &nbsp;|&nbsp;
+          <strong style={{ color: "#2563eb" }}>[ F1 ]</strong> Riwayat &nbsp;|&nbsp;
+          <strong style={{ color: "#dc2626" }}>[ Esc ]</strong> Batal / Tutup Modal
         </p>
       </section>
 
       <div className="order-main-grid">
-      <section className="panel form-panel form-panel-inline order-catalog-panel">
-        <div className="catalog-header-row">
-          <div>
-            <h2>POS Order Katalog</h2>
-            <p className="small-text catalog-meta-text">
-              {catalogSource === "csv" ? `${catalog.sourceFilesCount || 0} file CSV` : "Produk Manual"} • {catalog.products.length || 0} produk
-            </p>
-          </div>
-          <div className="variant-actions">
-            <button
-              className={`category-pill ${catalogSource === "manual" ? "active" : ""}`}
-              onClick={() => setCatalogSource("manual")}
-              disabled={catalogLoading}
-            >
-              Produk Manual
-            </button>
-            <button
-              className={`category-pill ${catalogSource === "csv" ? "active" : ""}`}
-              onClick={() => setCatalogSource("csv")}
-              disabled={catalogLoading}
-            >
-              Katalog Shopify (CSV)
-            </button>
-            {catalogSource === "csv" && (
-              <button className="btn btn-secondary" onClick={() => loadCatalog(true)} disabled={catalogLoading}>
-                {catalogLoading ? "Memuat..." : "Reload CSV"}
+        {/* LEFT COLUMN: Products / Categories */}
+        <section className="panel form-panel form-panel-inline order-catalog-panel">
+          <div className="catalog-header-row">
+            <div>
+              <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                Katalog Produk
+                {catalog.source === "offline-cache" ? (
+                  <span className="badge badge-offline" style={{ fontSize: "0.75rem" }}>Offline Cache</span>
+                ) : (
+                  <span className="badge badge-nofaktur" style={{ fontSize: "0.75rem", background: "#0d9488", color: "#fff" }}>Web POS Live</span>
+                )}
+              </h2>
+              <p className="small-text catalog-meta-text">
+                {catalog.products.length || 0} produk tersedia
+              </p>
+            </div>
+            <div className="variant-actions">
+              <button
+                className={`category-pill ${catalogSource === "api" ? "active" : ""}`}
+                onClick={() => setCatalogSource("api")}
+                disabled={catalogLoading}
+              >
+                🌐 Web POS
               </button>
-            )}
+              <button
+                className={`category-pill ${catalogSource === "manual" ? "active" : ""}`}
+                onClick={() => setCatalogSource("manual")}
+                disabled={catalogLoading}
+              >
+                ✏️ Manual
+              </button>
+              <button
+                className={`category-pill ${catalogSource === "csv" ? "active" : ""}`}
+                onClick={() => setCatalogSource("csv")}
+                disabled={catalogLoading}
+              >
+                📁 CSV
+              </button>
+              <button className="btn btn-secondary" onClick={() => loadCatalog(true)} disabled={catalogLoading} style={{ padding: "4px 10px", fontSize: "0.82rem" }}>
+                {catalogLoading ? "Memuat..." : "🔄 Sinkron"}
+              </button>
+            </div>
           </div>
-        </div>
 
-        <div className="catalog-toolbar">
-          <input
-            ref={catalogSearchRef}
-            className="search-input catalog-search"
-            type="text"
-            placeholder="Cari produk / SKU / kategori..."
-            value={catalogSearch}
-            onChange={(e) => {
-              setCatalogSearch(e.target.value);
-            }}
-            autoFocus
-            disabled={catalogLoading}
-          />
-          <div className="category-pills">
+          {/* Search & Categories Bar */}
+          <div className="catalog-toolbar" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              ref={catalogSearchRef}
+              className="search-input catalog-search"
+              type="text"
+              placeholder="[ F4 ] Cari nama atau scan barcode produk..."
+              value={catalogSearch}
+              onChange={(e) => setCatalogSearch(e.target.value)}
+              autoFocus
+              disabled={catalogLoading}
+              style={{ flex: 1 }}
+            />
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setViewMode((m) => (m === "grid" ? "list" : "grid"))}
+              title={viewMode === "grid" ? "Ubah ke Tampilan List" : "Ubah ke Tampilan Grid"}
+              style={{ padding: "8px 12px" }}
+            >
+              {viewMode === "grid" ? "📋 List" : "⊞ Grid"}
+            </button>
+          </div>
+
+          {/* Category Filter Pills */}
+          <div className="category-pills" style={{ marginTop: 8 }}>
             <button
               className={`category-pill ${activeCategory === "all" ? "active" : ""}`}
               onClick={() => setActiveCategory("all")}
               disabled={catalogLoading}
             >
-              Semua
+              Semua Kategori
             </button>
             {catalog.categories.map((cat) => (
               <button
@@ -534,223 +699,253 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
               </button>
             ))}
           </div>
-        </div>
 
-        <div className="catalog-layout">
-          <div className="catalog-products-list">
-            {filteredProducts.length === 0 && (
-              <div className="manual-fallback-box">
-                <div className="empty-cell">Tidak ada produk pada filter saat ini.</div>
-              </div>
-            )}
-            {filteredProducts.map((p) => (
-              <button
-                key={p.id}
-                className={`product-card ${selectedProductId === p.id ? "active" : ""}`}
-                onClick={() => setSelectedProductId(p.id)}
-                onDoubleClick={() => {
-                  setSelectedProductId(p.id);
-                  if (canCreateOrder && p.variants?.length > 0) {
-                    addVariantToCart(p, p.variants[0]);
-                  }
+          {/* Products List / Grid */}
+          <div className="catalog-layout" style={{ marginTop: 12 }}>
+            <div className={`catalog-products-list ${viewMode === "list" ? "view-list-mode" : "view-grid-mode"}`} style={{ display: "grid", gridTemplateColumns: viewMode === "grid" ? "repeat(auto-fill, minmax(180px, 1fr))" : "1fr", gap: 10 }}>
+              {filteredProducts.length === 0 && (
+                <div className="manual-fallback-box" style={{ gridColumn: "1 / -1", textAlign: "center", padding: 30 }}>
+                  <div className="empty-cell">Tidak ada produk ditemukan untuk pencarian ini.</div>
+                </div>
+              )}
+              {filteredProducts.map((p) => {
+                const isOutOfStock = p.stock <= 0;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`product-card-enhanced ${selectedProductId === p.id ? "active" : ""}`}
+                    onClick={() => {
+                      setSelectedProductId(p.id);
+                      if (canCreateOrder && p.variants?.length > 0) {
+                        playScannerBeep();
+                        addVariantToCart(p, p.variants[0]);
+                      }
+                    }}
+                  >
+                    {p.image ? (
+                      <img src={p.image} alt={p.title} className="product-card-image" />
+                    ) : (
+                      <div className="product-card-image" style={{ display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: "1.5rem" }}>
+                        📦
+                      </div>
+                    )}
+                    <div className="product-card-title" style={{ fontWeight: 700, fontSize: "0.92rem", marginBottom: 2 }}>
+                      {p.title}
+                    </div>
+                    <div className="product-card-meta" style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", color: "#64748b" }}>
+                      <span>{p.category}</span>
+                      {p.barcode && <span className="mono">{p.barcode}</span>}
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
+                      <div style={{ fontWeight: 800, color: "#0d9488", fontSize: "1rem" }}>
+                        {formatRupiah(p.price)}
+                      </div>
+                      <span className={`product-stock-badge ${p.stock > 10 ? "stock-ok" : (p.stock > 0 ? "stock-low" : "stock-empty")}`}>
+                        {isOutOfStock ? "Habis" : `Stok: ${p.stock}`}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {status && <div className="status" style={{ marginTop: 10 }}>{status}</div>}
+        </section>
+
+        {/* RIGHT COLUMN: Order Details / Cart (DreamPOS Layout) */}
+        <section className="panel cart-panel cart-panel-full order-cart-panel theiaStickySidebar">
+          <div className="customer-info" style={{ marginBottom: 12 }}>
+            <div className="order-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <h3 style={{ margin: 0, fontSize: "1.1rem" }}>Daftar Penjualan</h3>
+              <span className="badge badge-nofaktur">#LIVE-POS</span>
+            </div>
+
+            {/* Customer dropdown + quick add */}
+            <div className="customer-select-row">
+              <select
+                value={selectedCustomer?.id || 0}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  const found = customers.find((c) => c.id === val);
+                  setSelectedCustomer(found || { id: 0, nama: "Pelanggan Umum", nohp: "-", alamat: "" });
                 }}
               >
-                <div className="product-card-title">{p.title}</div>
-                <div className="product-card-meta">
-                  <span>{p.category}</span>
-                  <span>{p.variants.length} varian</span>
-                </div>
-                <div className="product-card-price">
-                  mulai {formatRupiah(Math.min(...p.variants.map((v) => v.price || 0)))}
-                </div>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nama} {c.nohp && c.nohp !== "-" ? `(${c.nohp})` : ""}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn-quick-customer"
+                title="Tambah Pelanggan Cepat"
+                onClick={() => setShowAddCustomer(true)}
+              >
+                +
               </button>
-            ))}
+            </div>
           </div>
 
-          <div className="catalog-variant-panel">
-            {isCustomFallbackMode && (
-              <div className="custom-order-panel">
-                <h3 className="catalog-product-title">Custom Order</h3>
-                <p className="small-text custom-order-label">
-                  Produk tidak ditemukan, tambah manual untuk: <strong>{catalogSearch.trim()}</strong>
-                </p>
-                <div className="custom-order-form">
-                  <label htmlFor="customPrice">Harga Custom</label>
+          {/* Cart Header */}
+          <div className="cart-header-dream">
+            <h5 style={{ margin: 0, fontSize: "0.95rem" }}>Detail Penjualan</h5>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {cart.length > 0 && (
+                <button type="button" className="btn-clear-cart" onClick={clearCart}>
+                  Reset
+                </button>
+              )}
+              <span className="badge-count">Barang : <strong style={{ color: "#0d9488" }}>{cart.length}</strong></span>
+            </div>
+          </div>
+
+          {/* Cart Items List */}
+          <div className="table-wrap cart-table-wrap" style={{ maxHeight: "36vh", overflowY: "auto" }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Barang</th>
+                  <th>Harga</th>
+                  <th style={{ textAlign: "center" }}>Qty</th>
+                  <th>Subtotal</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {cart.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="empty-cell" style={{ padding: "24px 10px", textAlign: "center", color: "#94a3b8" }}>
+                      Keranjang kosong. Scan barcode atau klik produk untuk menambahkan.
+                    </td>
+                  </tr>
+                ) : (
+                  cart.map((item) => (
+                    <tr key={item.id}>
+                      <td>
+                        <strong>{item.title}</strong>
+                        {item.barcode && <div className="mono small-text" style={{ fontSize: "0.72rem" }}>{item.barcode}</div>}
+                      </td>
+                      <td>{formatRupiah(item.price)}</td>
+                      <td style={{ textAlign: "center" }}>
+                        <div className="qty-row-sm">
+                          <button className="btn-qty-sm" onClick={() => updateQty(item.id, -1)}>
+                            −
+                          </button>
+                          <span style={{ minWidth: 20, textAlign: "center", fontWeight: 700 }}>{item.qty}</span>
+                          <button className="btn-qty-sm" onClick={() => updateQty(item.id, 1)}>
+                            +
+                          </button>
+                        </div>
+                      </td>
+                      <td className="txt-in" style={{ fontWeight: 700 }}>{formatRupiah(item.price * item.qty)}</td>
+                      <td>
+                        <button className="btn-remove" onClick={() => removeFromCart(item.id)}>
+                          ×
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Order Summary Table */}
+          <table className="summary-table-dream">
+            <tbody>
+              <tr>
+                <td>Sub Total</td>
+                <td style={{ textAlign: "right", fontWeight: 600 }}>{formatRupiah(cartSubtotal)}</td>
+              </tr>
+              <tr>
+                <td>
+                  <span style={{ color: "#ef4444" }}>Diskon (Rp)</span>
+                </td>
+                <td style={{ textAlign: "right" }}>
                   <input
-                    ref={customPriceRef}
-                    id="customPrice"
                     type="number"
                     min="0"
-                    step="100"
-                    placeholder="Contoh: 15000"
-                    value={manualPrice}
-                    onChange={(e) => setManualPrice(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === "Tab") {
-                        e.preventDefault();
-                        focusCustomQty();
-                      }
-                    }}
+                    step="500"
+                    className="discount-input"
+                    value={diskon}
+                    onChange={(e) => setDiskon(Math.max(0, Number(e.target.value) || 0))}
                   />
-
-                  <label htmlFor="customQty">Qty</label>
-                  <input
-                    ref={customQtyRef}
-                    id="customQty"
-                    type="number"
-                    min="1"
-                    placeholder="1"
-                    value={manualQty}
-                    onChange={(e) => setManualQty(Math.max(1, Number(e.target.value) || 1))}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === "Tab") {
-                        e.preventDefault();
-                        addManualFallbackToCart();
-                      }
-                    }}
-                  />
-
-                  <button
-                    className="btn btn-save custom-order-add-btn"
-                    onClick={addManualFallbackToCart}
-                    disabled={!canCreateOrder}
-                  >
-                    + Tambah ke Keranjang
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {!isCustomFallbackMode && !selectedProduct && (
-              <div className="empty-cell">Pilih produk untuk menampilkan varian.</div>
-            )}
-            {!isCustomFallbackMode && selectedProduct && (
-              <>
-                <h3 className="catalog-product-title">{selectedProduct.title}</h3>
-                <p className="small-text">Kategori: {selectedProduct.category}</p>
-                <div className="variant-list">
-                  {selectedProduct.variants.map((variant) => (
-                    <div key={`${selectedProduct.id}-${variant.id}`} className="variant-row">
-                      <div>
-                        <div className="variant-title">{variant.title}</div>
-                        <div className="variant-subtext">
-                          {variant.sku ? `SKU: ${variant.sku}` : "Tanpa SKU"}
-                        </div>
-                      </div>
-                      <div className="variant-actions">
-                        <strong>{formatRupiah(variant.price)}</strong>
-                        <button
-                          className="btn btn-save variant-add-btn"
-                          onClick={() => addVariantToCart(selectedProduct, variant)}
-                          disabled={loading || !canCreateOrder}
-                        >
-                          + Keranjang
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {status && <div className="status">{status}</div>}
-      </section>
-
-      <section className="panel cart-panel cart-panel-full order-cart-panel">
-        <div className="section-header">
-          <h2>Keranjang Belanja ({cart.length} item)</h2>
-          <input
-            ref={cartSearchRef}
-            className="search-input"
-            type="text"
-            placeholder="Cari di keranjang..."
-            value={cartSearch}
-            onChange={(e) => {
-              setCartSearch(e.target.value);
-              setCartPage(0);
-            }}
-          />
-        </div>
-
-        <div className="table-wrap cart-table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Barang</th>
-                <th>SKU</th>
-                <th>Harga</th>
-                <th>Qty</th>
-                <th>Subtotal</th>
-                <th></th>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {pagedCart.length === 0 && (
-                <tr>
-                  <td colSpan="6" className="empty-cell">
-                    {cart.length === 0 ? "Keranjang kosong." : "Tidak ditemukan."}
-                  </td>
-                </tr>
-              )}
-              {pagedCart.map((item) => (
-                <tr key={item.id}>
-                  <td>{item.title}</td>
-                  <td className="mono">{item.sku || "-"}</td>
-                  <td>{formatRupiah(item.price)}</td>
-                  <td>
-                    <div className="qty-row-sm">
-                      <button className="btn-qty-sm" onClick={() => updateQty(item.id, -1)}>
-                        −
-                      </button>
-                      <span>{item.qty}</span>
-                      <button className="btn-qty-sm" onClick={() => updateQty(item.id, 1)}>
-                        +
-                      </button>
-                    </div>
-                  </td>
-                  <td className="txt-in">{formatRupiah(item.price * item.qty)}</td>
-                  <td>
-                    <button className="btn-remove" onClick={() => removeFromCart(item.id)}>
-                      ×
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              <tr className="grand-total-row">
+                <td>Grand Total</td>
+                <td style={{ textAlign: "right", color: "#0d9488" }}>{formatRupiah(grandTotal)}</td>
+              </tr>
             </tbody>
           </table>
-        </div>
 
-        {filteredCart.length > CART_PAGE_SIZE && (
-          <div className="paging">
-            <button disabled={cartPage <= 0} onClick={() => setCartPage((p) => p - 1)}>
-              ← Prev
+          {/* Payment Method Selector */}
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "#475569", marginBottom: 4 }}>Metode Pembayaran</div>
+            <div className="payment-methods-grid">
+              <div
+                className={`payment-tile ${paymentMethod === "cash" ? "active" : ""}`}
+                onClick={() => setPaymentMethod("cash")}
+              >
+                <span className="icon">💵</span>
+                <span>Tunai</span>
+              </div>
+              <div
+                className={`payment-tile ${paymentMethod === "card" ? "active" : ""}`}
+                onClick={() => setPaymentMethod("card")}
+              >
+                <span className="icon">💳</span>
+                <span>Non Tunai</span>
+              </div>
+              <div
+                className={`payment-tile ${paymentMethod === "hutang" ? "active" : ""}`}
+                onClick={() => setPaymentMethod("hutang")}
+              >
+                <span className="icon">📑</span>
+                <span>Hutang</span>
+              </div>
+            </div>
+          </div>
+
+          {/* DreamPOS Action Buttons */}
+          <div className="action-buttons-dream">
+            <button
+              type="button"
+              className="btn btn-teal"
+              disabled={loading || cart.length === 0 || !canCreateOrder}
+              onClick={() => setShowPayment(true)}
+            >
+              [ F5 ] Bayar
             </button>
-            <span>
-              Hal {cartPage + 1} / {cartTotalPages}
-            </span>
-            <button disabled={cartPage >= cartTotalPages - 1} onClick={() => setCartPage((p) => p + 1)}>
-              Next →
+            <button
+              type="button"
+              className="btn btn-purple"
+              disabled={loading || cart.length === 0}
+              onClick={handleHoldPending}
+            >
+              [ F11 ] Pending
             </button>
           </div>
-        )}
 
-        <div className="cart-footer">
-          <div className="cart-total">
-            Total: <strong>{formatRupiah(cartTotal)}</strong>
-          </div>
-          <button
-            className="btn btn-bayar"
-            disabled={loading || cart.length === 0 || !canCreateOrder}
-            onClick={() => setShowPayment(true)}
-          >
-            Bayar
-          </button>
-        </div>
-      </section>
+          {pendingCarts.length > 0 && (
+            <div style={{ marginTop: 10, textAlign: "center" }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ width: "100%", padding: "6px", fontSize: "0.82rem" }}
+                onClick={() => setShowPendingModal(true)}
+              >
+                📑 Lihat Order Pending ({pendingCarts.length})
+              </button>
+            </div>
+          )}
+        </section>
       </div>
 
+      {/* Order History Section */}
       <OrderHistoryPanel
         orders={orders}
         summary={summary}
@@ -783,15 +978,122 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
         todayStr={todayStr}
       />
 
+      {/* DreamPOS Payment Modal */}
       {showPayment && canCreateOrder && (
         <PaymentModal
-          total={cartTotal}
+          total={grandTotal}
+          subtotal={cartSubtotal}
+          diskon={Number(diskon) || 0}
+          initialMethod={paymentMethod}
+          customer={selectedCustomer}
           loading={loading}
           onPay={handlePaymentDone}
           onClose={() => setShowPayment(false)}
         />
       )}
 
+      {/* Quick Add Customer Modal */}
+      {showAddCustomer && (
+        <div className="modal-overlay" onClick={() => setShowAddCustomer(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
+            <h3>Tambah Pelanggan Baru</h3>
+            <p className="small-text">Daftarkan pelanggan cepat untuk transaksi POS.</p>
+            <form onSubmit={handleQuickAddCustomer}>
+              <div className="database-form-group">
+                <label>Nama Pelanggan *</label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={newCustomerForm.nama}
+                  onChange={(e) => setNewCustomerForm((p) => ({ ...p, nama: e.target.value }))}
+                  placeholder="Contoh: Budi Santoso"
+                />
+              </div>
+              <div className="database-form-group">
+                <label>No. HP / WhatsApp</label>
+                <input
+                  type="text"
+                  value={newCustomerForm.nohp}
+                  onChange={(e) => setNewCustomerForm((p) => ({ ...p, nohp: e.target.value }))}
+                  placeholder="Contoh: 081234567890"
+                />
+              </div>
+              <div className="database-form-group">
+                <label>Alamat</label>
+                <input
+                  type="text"
+                  value={newCustomerForm.alamat}
+                  onChange={(e) => setNewCustomerForm((p) => ({ ...p, alamat: e.target.value }))}
+                  placeholder="Contoh: Padang"
+                />
+              </div>
+              <div className="modal-actions" style={{ display: "flex", gap: 8, marginTop: 16 }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowAddCustomer(false)} disabled={customerSaving}>
+                  Batal
+                </button>
+                <button type="submit" className="btn btn-teal" disabled={customerSaving}>
+                  {customerSaving ? "Menyimpan..." : "Simpan Pelanggan"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Pending Orders Modal */}
+      {showPendingModal && (
+        <div className="modal-overlay" onClick={() => setShowPendingModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 580 }}>
+            <h3>Daftar Transaksi Pending</h3>
+            <p className="small-text">Pilih transaksi yang ingin dipulihkan ke kasir.</p>
+            {pendingCarts.length === 0 ? (
+              <p className="empty-cell" style={{ textAlign: "center", padding: 20 }}>Tidak ada transaksi yang dipending.</p>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Waktu</th>
+                      <th>Pelanggan</th>
+                      <th>Item</th>
+                      <th>Total</th>
+                      <th>Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingCarts.map((pnd) => (
+                      <tr key={pnd.id}>
+                        <td>{pnd.time}</td>
+                        <td>{pnd.customer?.nama || "Pelanggan Umum"}</td>
+                        <td>{pnd.items.length} item</td>
+                        <td className="txt-in" style={{ fontWeight: 700 }}>{formatRupiah(pnd.total)}</td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn-teal"
+                            style={{ padding: "4px 10px", fontSize: "0.82rem" }}
+                            onClick={() => restorePendingCart(pnd)}
+                          >
+                            Pulihkan
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="modal-actions" style={{ marginTop: 14 }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setShowPendingModal(false)}>
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Retur Modal */}
       {returTarget && canRetur && (
         <ReturModal
           order={returTarget.order}

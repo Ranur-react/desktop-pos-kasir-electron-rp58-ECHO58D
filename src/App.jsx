@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import CustomOrder from "./CustomOrder";
 import PrinterSettings from "./PrinterSettings";
 import DatabaseSettings from "./DatabaseSettings";
+import ServerSettings from "./ServerSettings";
 import AccountSettings from "./AccountSettings";
 import StoreSettings from "./StoreSettings";
 import ProductManagement from "./ProductManagement";
@@ -44,6 +45,13 @@ export default function App() {
     readOnlyMessage: "",
     developerContact: {}
   });
+
+  // -- License input states --
+  const [licenseInput, setLicenseInput] = useState("");
+  const [licenseLoading, setLicenseLoading] = useState(false);
+  const [licenseError, setLicenseError] = useState("");
+  const [showLicenseScreen, setShowLicenseScreen] = useState(false);
+  const [bypassLicenseReadOnly, setBypassLicenseReadOnly] = useState(false);
 
   // -- Auth state --
   const [authLoading, setAuthLoading] = useState(true);
@@ -106,6 +114,7 @@ export default function App() {
     products: { label: "Produk (NEW)", icon: "📦", title: "Manajemen Produk & Inventori" },
     store: { label: "Toko", icon: "🏬", title: "Konfigurasi & Pengaturan Toko" },
     printer: { label: "Printer", icon: "🖨", title: "Konfigurasi Printer & Kasir" },
+    server: { label: "Server Web", icon: "🌐", title: "Integrasi Server Web POS & API" },
     database: { label: "Database", icon: "🗄", title: "Konfigurasi Database Server" },
     accounts: { label: "Akun", icon: "👤", title: "Manajemen Akun & Otoritas" }
   };
@@ -117,7 +126,10 @@ export default function App() {
     if (can("view_product") || can("manage_product")) tabs.push({ key: "products", ...tabMeta.products });
     if (can("manage_printer")) tabs.push({ key: "store", ...tabMeta.store });
     if (!readOnlyByLicense && can("view_printer")) tabs.push({ key: "printer", ...tabMeta.printer });
-    if (!readOnlyByLicense && can("view_database")) tabs.push({ key: "database", ...tabMeta.database });
+    if (!readOnlyByLicense && (can("view_database") || can("manage_database"))) {
+      tabs.push({ key: "server", ...tabMeta.server });
+      tabs.push({ key: "database", ...tabMeta.database });
+    }
     if (!readOnlyByLicense && can("manage_accounts")) tabs.push({ key: "accounts", ...tabMeta.accounts });
     return tabs;
   }, [permissions, readOnlyByLicense]);
@@ -198,6 +210,9 @@ export default function App() {
     try {
       const next = await window.posApi.getLicenseState();
       setLicenseState(next);
+      if (next?.enteredCode) {
+        setLicenseInput(next.enteredCode);
+      }
       return next;
     } catch (err) {
       setLicenseState((prev) => ({
@@ -207,6 +222,51 @@ export default function App() {
         reason: `Gagal memuat lisensi: ${err.message}`
       }));
       return null;
+    }
+  }
+
+  async function handleActivateLicense(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!licenseInput.trim()) {
+      setLicenseError("Kode lisensi wajib diisi.");
+      return;
+    }
+
+    try {
+      setLicenseLoading(true);
+      setLicenseError("");
+      const next = await window.posApi.activateLicense(licenseInput.trim());
+      setLicenseState(next);
+      if (next?.isWriteEnabled) {
+        setAuthStatus("✓ Lisensi berhasil diaktifkan!");
+        setShowLicenseScreen(false);
+        setTimeout(() => setAuthStatus(""), 4000);
+      } else {
+        setLicenseError(next?.reason || "Kode lisensi tidak valid atau belum aktif.");
+      }
+    } catch (err) {
+      setLicenseError(`Aktivasi lisensi gagal: ${err.message}`);
+    } finally {
+      setLicenseLoading(false);
+    }
+  }
+
+  async function handleRefreshLicense() {
+    try {
+      setLicenseLoading(true);
+      setLicenseError("");
+      const next = await refreshLicenseState();
+      if (next?.isWriteEnabled) {
+        setAuthStatus("✓ Lisensi terverifikasi aktif.");
+        setShowLicenseScreen(false);
+        setTimeout(() => setAuthStatus(""), 3000);
+      } else {
+        setLicenseError(next?.reason || "Status lisensi telah diperbarui.");
+      }
+    } catch (err) {
+      setLicenseError(`Refresh gagal: ${err.message}`);
+    } finally {
+      setLicenseLoading(false);
     }
   }
 
@@ -405,19 +465,181 @@ export default function App() {
       <main className="app-shell auth-shell">
         <section className="panel auth-panel">
           <h2>Memuat Sistem Akses...</h2>
-          <p className="small-text">Sedang memeriksa status akun dan role akses.</p>
+          <p className="small-text">Sedang memeriksa status lisensi dan akun.</p>
         </section>
       </main>
     );
   }
 
+  // Alur 1: Aktivasi Lisensi terlebih dahulu
+  // Ditampilkan jika:
+  // - User membuka secara manual (showLicenseScreen === true), ATAU
+  // - Lisensi belum aktif DAN (sedang setup akun awal atau belum memilih bypass read-only)
+  const isLicenseActive = licenseState?.isWriteEnabled === true;
+  const needsLicenseActivation =
+    showLicenseScreen ||
+    (!isLicenseActive && (authState.needsSetup || !bypassLicenseReadOnly));
+
+  if (needsLicenseActivation) {
+    return (
+      <main className="app-shell auth-shell">
+        <section className="panel auth-panel" style={{ maxWidth: 520, width: "100%" }}>
+          <div style={{ textAlign: "center", marginBottom: "18px" }}>
+            <div style={{ fontSize: "2.5rem", marginBottom: "6px" }}>🔐</div>
+            <h2 style={{ margin: "0 0 6px 0", fontSize: "1.4rem" }}>Aktivasi Lisensi Mudo POS</h2>
+            <p className="small-text" style={{ margin: 0, color: "#64748b" }}>
+              {authState.needsSetup
+                ? "Silakan aktivasi lisensi terlebih dahulu sebelum melakukan setup akun awal."
+                : "Masukkan kode lisensi resmi dari developer untuk mengaktifkan seluruh fitur POS."}
+            </p>
+          </div>
+
+          <form className="license-activate-form" onSubmit={handleActivateLicense}>
+            <div className="database-form-group">
+              <label htmlFor="license-input" style={{ fontWeight: 600 }}>Kode Lisensi (LICENSE_CODE)</label>
+              <input
+                id="license-input"
+                type="text"
+                placeholder="Contoh: CLirU4Ur33RN"
+                value={licenseInput}
+                onChange={(e) => {
+                  setLicenseInput(e.target.value.trim());
+                  setLicenseError("");
+                }}
+                disabled={licenseLoading}
+                style={{ letterSpacing: "1px", fontWeight: "bold", fontSize: "1.05rem" }}
+              />
+              <p className="small-text" style={{ marginTop: 4, color: "#64748b" }}>
+                Masukkan kode lisensi resmi yang terdaftar untuk toko Anda.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: "10px", marginTop: "14px" }}>
+              <button
+                type="submit"
+                className="btn btn-save"
+                disabled={licenseLoading || !licenseInput.trim()}
+                style={{ flex: 2, marginTop: 0 }}
+              >
+                {licenseLoading ? "Memvalidasi Lisensi..." : "Aktivasi Lisensi Sekarang"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleRefreshLicense}
+                disabled={licenseLoading}
+                style={{ flex: 1, marginTop: 0 }}
+              >
+                Refresh
+              </button>
+            </div>
+          </form>
+
+          {licenseError && (
+            <div className="status" style={{ color: "#b42318", background: "#fef2f2", padding: "10px 12px", borderRadius: 8, marginTop: 14, border: "1px solid #fecaca" }}>
+              ✗ {licenseError}
+            </div>
+          )}
+
+          {authStatus && (
+            <div className="status" style={{ color: "#166534", background: "#f0fdf4", padding: "10px 12px", borderRadius: 8, marginTop: 14, border: "1px solid #bbf7d0" }}>
+              {authStatus}
+            </div>
+          )}
+
+          <div style={{
+            marginTop: "16px",
+            padding: "12px",
+            borderRadius: "8px",
+            background: isLicenseActive ? "#f0fdf4" : "#f8fafc",
+            border: `1px solid ${isLicenseActive ? "#bbf7d0" : "#e2e8f0"}`
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+              <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#475569" }}>Status Lisensi:</span>
+              <span style={{
+                padding: "2px 8px",
+                borderRadius: "4px",
+                fontSize: "0.78rem",
+                fontWeight: 700,
+                background: isLicenseActive ? "#22c55e" : "#ef4444",
+                color: "#fff"
+              }}>
+                {isLicenseActive ? "AKTIF (Full Access)" : "TIDAK AKTIF"}
+              </span>
+            </div>
+            <div style={{ fontSize: "0.83rem", color: "#334155" }}>
+              <strong>Keterangan:</strong> {licenseState?.reason || "Kode lisensi belum diisi."}
+            </div>
+            {licenseState?.enteredCode && (
+              <div style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "2px" }}>
+                Kode saat ini: <code>{licenseState.enteredCode}</code>
+              </div>
+            )}
+          </div>
+
+          <div style={{
+            marginTop: "14px",
+            padding: "10px 12px",
+            borderRadius: "8px",
+            background: "#f1f5f9",
+            border: "1px solid #cbd5e1",
+            fontSize: "0.82rem",
+            color: "#475569"
+          }}>
+            <div style={{ fontWeight: 600, marginBottom: "4px" }}>Kontak Developer Resmi:</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "12px" }}>
+              <span>📱 WA: <strong>{licenseState?.developerContact?.whatsapp || "+6283182647716"}</strong></span>
+              <span>✉️ Email: <strong>{licenseState?.developerContact?.email || "rahmatnur844@gmail.com"}</strong></span>
+            </div>
+          </div>
+
+          {!authState.needsSetup && (
+            <div style={{ textAlign: "center", marginTop: "16px" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setBypassLicenseReadOnly(true);
+                  setShowLicenseScreen(false);
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#2563eb",
+                  cursor: "pointer",
+                  fontSize: "0.85rem",
+                  textDecoration: "underline"
+                }}
+              >
+                Lanjut ke Login (Mode Baca Saja / Read-Only) &rarr;
+              </button>
+            </div>
+          )}
+
+          {showLicenseScreen && (authState.user || !authState.needsSetup) && (
+            <div style={{ textAlign: "center", marginTop: "12px" }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowLicenseScreen(false)}
+                style={{ width: "100%", padding: "8px 14px", fontSize: "0.85rem" }}
+              >
+                Tutup &amp; Kembali
+              </button>
+            </div>
+          )}
+        </section>
+      </main>
+    );
+  }
+
+  // Alur 2: Setup Akun Awal (Hanya jika lisensi sudah aktif)
   if (authState.needsSetup) {
     return (
       <main className="app-shell auth-shell">
         <section className="panel auth-panel">
           <h2>Setup Akun Awal</h2>
           <p className="small-text">
-            Belum ada akun. Buat akun pertama untuk mengaktifkan login dan role akses.
+            Lisensi telah aktif. Buat akun administrator awal untuk mengaktifkan login dan role akses.
           </p>
 
           <form className="account-create-form" onSubmit={handleSetupInitialAccount}>
@@ -465,21 +687,26 @@ export default function App() {
               </div>
             </div>
 
-            <button type="submit" className="btn btn-save" disabled={readOnlyByLicense}>Simpan Akun Awal</button>
+            <button type="submit" className="btn btn-save">Simpan Akun Awal</button>
           </form>
 
-          {readOnlyByLicense && (
-            <p className="small-text" style={{ color: "#b42318", marginTop: "8px" }}>
-              Setup akun dinonaktifkan saat license tidak aktif (mode read-only).
-            </p>
-          )}
-
           {authStatus && <div className="status">{authStatus}</div>}
+
+          <div style={{ marginTop: "16px", textAlign: "center" }}>
+            <button
+              type="button"
+              onClick={() => setShowLicenseScreen(true)}
+              style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "0.82rem" }}
+            >
+              🔐 Lisensi: <span style={{ color: "#16a34a", fontWeight: 600 }}>Aktif</span> • Ubah Lisensi
+            </button>
+          </div>
         </section>
       </main>
     );
   }
 
+  // Alur 3: Login Akun
   if (!authState.user) {
     return (
       <main className="app-shell auth-shell">
@@ -511,6 +738,23 @@ export default function App() {
           </form>
 
           {authStatus && <div className="status">{authStatus}</div>}
+
+          <div style={{ marginTop: "16px", textAlign: "center" }}>
+            <button
+              type="button"
+              onClick={() => {
+                setBypassLicenseReadOnly(false);
+                setShowLicenseScreen(true);
+              }}
+              style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "0.82rem" }}
+            >
+              🔐 Lisensi: {isLicenseActive ? (
+                <span style={{ color: "#16a34a", fontWeight: 600 }}>Aktif</span>
+              ) : (
+                <span style={{ color: "#dc2626", fontWeight: 600 }}>Tidak Aktif (Read-Only)</span>
+              )} • Kelola Lisensi
+            </button>
+          </div>
         </section>
       </main>
     );
@@ -592,13 +836,13 @@ export default function App() {
             )}
             <h2>{currentTabMeta.title}</h2>
             <div className={`connection-pill ${readOnlyByLicense ? "connection-pill-warning" : "connection-pill-ok"}`}>
-              {readOnlyByLicense ? "Mode Read-Only" : "Koneksi Database Aktif"}
+              {readOnlyByLicense ? "Mode Read-Only" : "POS Desktop Siap"}
             </div>
           </div>
 
           <div className="topbar-actions">
-            <div className="shift-label">Shift Aktif: <strong>Pagi (08:00 - 16:00)</strong></div>
-            <div className="shopify-label">Shopify Terkoneksi</div>
+            <div className="shift-label">Cabang: <strong>{authState.user?.branch?.name || "Cabang Utama"}</strong></div>
+            <div className="shopify-label" style={{ background: "#0d9488", color: "#fff" }}>Web POS Live</div>
           </div>
         </header>
 
@@ -740,6 +984,10 @@ export default function App() {
               onLicenseStateChanged={setLicenseState}
               appReadOnly={readOnlyByLicense}
             />
+          )}
+
+          {tab === "server" && (
+            <ServerSettings onApplied={() => {}} />
           )}
 
           {tab === "database" && can("view_database") && (

@@ -30,6 +30,16 @@ contextBridge.exposeInMainWorld("posApi", {
   deleteManualProduct: (id) => ipcRenderer.invoke("manual-product:delete", id),
   deleteManyManualProducts: (ids) => ipcRenderer.invoke("manual-product:delete-many", ids),
 
+  // Web Hosting Server API
+  getServerConfig: () => ipcRenderer.invoke("server:get-config"),
+  saveServerConfig: (config) => ipcRenderer.invoke("server:save-config", config),
+  testServerConnection: (serverUrl) => ipcRenderer.invoke("server:test-connection", serverUrl),
+  getOnlineProducts: (params) => ipcRenderer.invoke("catalog:get-online", params),
+  getOnlineCustomers: (search) => ipcRenderer.invoke("customers:get-online", search),
+  createOnlineCustomer: (payload) => ipcRenderer.invoke("customers:create-online", payload),
+  syncOfflineOrders: () => ipcRenderer.invoke("order:sync-offline"),
+  getOnlineBootstrap: () => ipcRenderer.invoke("server:get-bootstrap"),
+
   // Database Configuration
   getDatabaseConfig: () => ipcRenderer.invoke("db:get-config"),
   testDatabaseConnection: (config) => ipcRenderer.invoke("db:test-connection", config),

@@ -40,6 +40,7 @@ const db = require("./services/dbConnection");
 const accountAuth = require("./services/accountAuth");
 const migration = require("./services/migration");
 const licenseService = require("./services/licenseService");
+const apiService = require("./services/apiService");
 
 let activeSessionUserId = null;
 let hasCheckedLicenseAtStartup = false;
@@ -390,47 +391,63 @@ ipcMain.handle("order:create", async (_, payload) => {
   await ensureLicenseAllowsWrite();
   ensurePermission("create_order");
 
-  const { items, paymentMethod, cashGiven, qrisMeta } = payload || {};
+  const {
+    items,
+    paymentMethod = "cash",
+    cashGiven,
+    qrisMeta,
+    idpelanggan = 0,
+    diskon = 0,
+    customerName = "Pelanggan Umum",
+    printAction = "hanya_cetak",
+    bankAccount = null
+  } = payload || {};
 
   if (!Array.isArray(items) || items.length === 0) {
     throw new Error("Keranjang kosong.");
   }
-  if (!["cash", "qris"].includes(paymentMethod)) {
+  if (!["cash", "qris", "card", "hutang"].includes(paymentMethod)) {
     throw new Error("Metode pembayaran tidak valid.");
   }
 
   const subtotal = items.reduce((s, i) => s + Number(i.price) * Number(i.qty), 0);
+  const totalBayar = Math.max(subtotal - Number(diskon || 0), 0);
+
   if (paymentMethod === "cash") {
     const cash = Number(cashGiven);
-    if (!Number.isFinite(cash) || cash < subtotal) {
+    if (!Number.isFinite(cash) || cash < totalBayar) {
       throw new Error("Uang cash kurang dari total belanja.");
-    }
-  } else {
-    if (!qrisMeta?.paid) {
-      throw new Error("Pembayaran QRIS belum dikonfirmasi.");
     }
   }
 
-  const order = createOrder(app, {
+  const sessionUser = getSessionUser();
+  const order = await createOrder(app, {
     items,
     paymentMethod,
     cashGiven,
-    qrisMeta: paymentMethod === "qris"
-      ? { paid: true }
-      : null
+    qrisMeta: paymentMethod === "qris" ? (qrisMeta || { paid: true }) : null,
+    idpelanggan,
+    diskon,
+    customerName,
+    cashierName: sessionUser?.displayName || sessionUser?.username || "Kasir",
+    printAction,
+    bankAccount
   });
 
   let printResult = { success: false, message: "" };
   try {
     const { printerEnabled } = getRuntimeConfig();
-    if (!printerEnabled) {
+    if (printAction === "tidak_cetak") {
+      await openCashDrawer().catch(() => {});
+      printResult = { success: true, message: "Transaksi berhasil (tanpa cetak struk)." };
+    } else if (!printerEnabled) {
       printResult = { success: false, message: "Printer dinonaktifkan di pengaturan." };
     } else {
       await printOrderReceipt(order);
-      printResult = { success: true, message: "Struk order tercetak." };
+      printResult = { success: true, message: "Struk order berhasil dicetak dan laci kas dibuka." };
     }
   } catch (err) {
-    printResult = { success: false, message: err.message };
+    printResult = { success: false, message: `Gagal cetak struk: ${err.message}` };
   }
 
   return {
@@ -593,6 +610,47 @@ ipcMain.handle("manual-product:delete-many", async (_, ids) => {
   };
 });
 
+// ── Web Server API IPC ──
+
+ipcMain.handle("server:get-config", async () => {
+  return apiService.getServerConfig(app);
+});
+
+ipcMain.handle("server:save-config", async (_, config) => {
+  await ensureLicenseAllowsWrite();
+  return apiService.saveServerConfig(app, config);
+});
+
+ipcMain.handle("server:test-connection", async (_, serverUrl) => {
+  return apiService.testConnection(serverUrl);
+});
+
+ipcMain.handle("server:get-bootstrap", async () => {
+  return apiService.getBootstrap(app);
+});
+
+ipcMain.handle("catalog:get-online", async (_, params) => {
+  ensurePermission("view_order");
+  return apiService.getProducts(app, params);
+});
+
+ipcMain.handle("customers:get-online", async (_, search) => {
+  ensurePermission("view_order");
+  return apiService.getCustomers(app, search);
+});
+
+ipcMain.handle("customers:create-online", async (_, payload) => {
+  await ensureLicenseAllowsWrite();
+  ensurePermission("create_order");
+  return apiService.createCustomer(app, payload);
+});
+
+ipcMain.handle("order:sync-offline", async () => {
+  await ensureLicenseAllowsWrite();
+  ensurePermission("view_order");
+  return syncAllOrdersToDatabase(app);
+});
+
 // ── Database Configuration IPC ──
 
 ipcMain.handle("db:get-config", async () => {
@@ -704,12 +762,50 @@ ipcMain.handle("auth:setup-initial", async (_, payload) => {
 });
 
 ipcMain.handle("auth:login", async (_, payload) => {
-  const account = accountAuth.authenticate(app, payload);
-  activeSessionUserId = account.id;
+  let loginSuccess = false;
+  let isOnline = false;
+  let message = "";
+  let apiUser = null;
+
+  // 1. Try online authentication with Web Server
+  try {
+    const apiRes = await apiService.login(app, payload?.username, payload?.password);
+    if (apiRes && apiRes.status === "success" && apiRes.user) {
+      isOnline = true;
+      apiUser = apiRes.user;
+      const roleMapped = (apiRes.user.role_id === 1 || apiRes.user.role_id === 2) ? "admin" : "cashier";
+      const localAcc = accountAuth.upsertLocalUserFromApi(app, {
+        id: `api-user-${apiRes.user.id}`,
+        username: apiRes.user.username,
+        displayName: apiRes.user.nama,
+        password: payload?.password,
+        role: roleMapped,
+        branch: {
+          id: apiRes.user.cabang_id,
+          name: apiRes.user.cabang_nama
+        }
+      });
+      activeSessionUserId = localAcc.id;
+      loginSuccess = true;
+      message = `Login berhasil (Online: ${apiRes.user.cabang_nama || "Cabang Utama"}).`;
+    }
+  } catch (apiErr) {
+    console.warn("[Auth] Online login failed, attempting local offline fallback:", apiErr.message);
+  }
+
+  // 2. Offline fallback to local credentials
+  if (!loginSuccess) {
+    const account = accountAuth.authenticate(app, payload);
+    activeSessionUserId = account.id;
+    loginSuccess = true;
+    message = "Login berhasil (Mode Offline).";
+  }
 
   return {
     success: true,
-    message: "Login berhasil.",
+    mode: isOnline ? "online" : "offline",
+    message,
+    apiUser,
     state: accountAuth.buildAuthState(app, getSessionUser())
   };
 });

@@ -1,7 +1,9 @@
 {
-  "name": "pos-electron-echo58d",
+  "name": "mudo-pos",
   "version": "2.17.0",
-  "description": "Aplikasi Kasir (POS) desktop sederhana yang bisa digunakan offline maupun online",
+  "description": "Mudopos Aplikasi Kasir (POS) desktop sederhana yang bisa digunakan offline maupun online",
+  "api_base_url": "https://atikahjaya.com",
+  "apiBaseUrl": "https://atikahjaya.com",
   "main": "electron/main.js",
   "author": "Ranur-react",
   "license": "MIT",
@@ -49,12 +51,12 @@
         "to": "assets"
       },
       {
-        "from": "build/icon.ico",
-        "to": "build/icon.ico"
+        "from": "build/bmlogo.ico",
+        "to": "build/bmlogo.ico"
       }
     ],
     "win": {
-      "icon": "build/icon.ico",
+      "icon": "build/bmlogo.ico",
       "signAndEditExecutable": false,
       "target": [
         "nsis",

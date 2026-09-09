@@ -3,7 +3,12 @@ const path = require("path");
 const os = require("os");
 const { app } = require("electron");
 const { printer: ThermalPrinter, types: PrinterTypes } = require("node-thermal-printer");
-const QRCode = require("qrcode");
+let QRCode = null;
+try {
+  QRCode = require("qrcode");
+} catch (e) {
+  console.warn("[Printer] Module 'qrcode' tidak ditemukan:", e.message);
+}
 const windowsPrinterDriver = require("./windows-printer-driver");
 
 function getAppRoot() {
@@ -250,37 +255,67 @@ async function printOrderReceipt(order) {
   }
 
   await printStoreHeader(printer, cfg);
+
+  if (order.synced === false) {
+    printer.alignCenter();
+    printer.bold(true);
+    printer.println("*** MODE OFFLINE ***");
+    printer.bold(false);
+  }
+
   printer.alignCenter();
-  printer.println("Struk Pembayaran");
+  printer.println("STRUK PEMBAYARAN POS");
   printer.drawLine();
 
   printer.alignLeft();
-  printer.println(`Kode Pesanan  : ${order.id}`);
-  printer.println(`Waktu  : ${formatDate(order.createdAt)}`);
-  printer.println(`Bayar  : ${order.paymentMethod === "cash" ? "CASH" : "QRIS"}`);
+  printer.println(`No. Faktur: ${order.nofaktur || order.id}`);
+  printer.println(`Waktu     : ${formatDate(order.createdAt)}`);
+  if (order.cashierName) {
+    printer.println(`Kasir     : ${order.cashierName}`);
+  }
+  if (order.customerName) {
+    printer.println(`Pelanggan : ${order.customerName}`);
+  }
+  const methodLabel = order.paymentMethod === "cash" ? "TUNAI" : (order.paymentMethod === "qris" ? "QRIS" : (order.paymentMethod === "card" ? "NON TUNAI" : "HUTANG"));
+  printer.println(`Metode    : ${methodLabel}`);
   printer.drawLine();
 
-  for (const item of order.items) {
+  for (const item of order.items || []) {
     if (item.returStatus === "returned") continue;
     printer.println(`${item.title}`);
     printer.println(`  ${item.qty} x ${formatRupiah(item.price)}  = ${formatRupiah(item.lineTotal)}`);
   }
 
   printer.drawLine();
+
+  if (Number(order.diskon) > 0) {
+    printer.println(`Subtotal  : ${formatRupiah(order.subtotal)}`);
+    printer.println(`Diskon    : -${formatRupiah(order.diskon)}`);
+  }
+
   printer.bold(true);
-  printer.println(`TOTAL  : ${formatRupiah(order.subtotal)}`);
+  printer.println(`TOTAL     : ${formatRupiah(order.totalBayar || order.subtotal)}`);
   printer.bold(false);
 
   if (order.paymentMethod === "cash" && order.cashGiven !== null) {
-    printer.println(`Tunai  : ${formatRupiah(order.cashGiven)}`);
-    printer.println(`Kembali: ${formatRupiah(order.change)}`);
+    printer.println(`Tunai     : ${formatRupiah(order.cashGiven)}`);
+    printer.println(`Kembali   : ${formatRupiah(order.change)}`);
   }
 
   printer.drawLine();
   printer.alignCenter();
-  printer.println("Terima kasih");
+  printer.println("Terima kasih atas kunjungan Anda");
+
+  if (order.synced === false) {
+    printer.newLine();
+    printer.bold(true);
+    printer.println("*** STRUK OFFLINE (BELUM SYNC) ***");
+    printer.bold(false);
+  }
+
   printer.newLine();
 
+  // Kick cash drawer
   printer.raw(Buffer.from([0x1b, 0x70, 0x00, 0x19, 0xfa]));
   printer.cut();
 

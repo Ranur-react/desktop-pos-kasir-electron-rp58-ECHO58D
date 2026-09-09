@@ -2099,3 +2099,342 @@ table th {
     min-height: auto;
   }
 }
+
+/* ── DreamPOS Styles ── */
+.btn-teal {
+  background: #0d9488 !important;
+  color: #fff !important;
+}
+.btn-teal:hover {
+  background: #0f766e !important;
+}
+
+.btn-purple {
+  background: #7c3aed !important;
+  color: #fff !important;
+}
+.btn-purple:hover {
+  background: #6d28d9 !important;
+}
+
+.badge-nofaktur {
+  background: #1e293b;
+  color: #38bdf8;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-family: monospace;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.badge-offline {
+  background: #b45309;
+  color: #fef3c7;
+}
+
+/* Customer selector row */
+.customer-select-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.customer-select-row select {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.9rem;
+}
+.btn-quick-customer {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  background: #0d9488;
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+/* DreamPOS Cart details */
+.cart-header-dream {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 8px;
+}
+.badge-count {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #334155;
+}
+.btn-clear-cart {
+  background: transparent;
+  border: 1px solid #ef4444;
+  color: #ef4444;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-clear-cart:hover {
+  background: #fee2e2;
+}
+
+/* Summary table */
+.summary-table-dream {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 10px;
+}
+.summary-table-dream tr td {
+  padding: 6px 10px;
+  font-size: 0.88rem;
+}
+.summary-table-dream .grand-total-row td {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #0f172a;
+  border-top: 2px dashed #cbd5e1;
+  padding-top: 10px;
+}
+.discount-input {
+  width: 120px;
+  padding: 4px 8px;
+  text-align: right;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+/* DreamPOS Payment Methods row */
+.payment-methods-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 12px 0;
+}
+.payment-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  border: 2px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #475569;
+}
+.payment-tile:hover {
+  border-color: #94a3b8;
+}
+.payment-tile.active {
+  border-color: #0d9488;
+  background: #f0fdfa;
+  color: #0d9488;
+}
+.payment-tile span.icon {
+  font-size: 1.4rem;
+  margin-bottom: 4px;
+}
+
+/* Action buttons row */
+.action-buttons-dream {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+.action-buttons-dream .btn {
+  flex: 1;
+  padding: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  border-radius: 10px;
+}
+
+/* Product Card Enhanced */
+.product-card-enhanced {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.1s;
+  text-align: left;
+}
+.product-card-enhanced:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+  border-color: #0d9488;
+}
+.product-card-enhanced.active {
+  border-color: #0d9488;
+  box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.2);
+}
+.product-card-image {
+  width: 100%;
+  height: 90px;
+  object-fit: cover;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: #f1f5f9;
+}
+.product-stock-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  margin-top: 4px;
+}
+.stock-ok { background: #dcfce7; color: #15803d; }
+.stock-low { background: #fef3c7; color: #b45309; }
+.stock-empty { background: #fee2e2; color: #b91c1c; }
+
+/* Payment Modal DreamPOS */
+.payment-modal-dream {
+  max-width: 540px;
+  width: 95vw;
+}
+.modal-header-dream {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+.payment-total-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #0f172a;
+  color: #fff;
+  padding: 16px 20px;
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+.total-breakdown .total-sub {
+  display: block;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  margin-bottom: 2px;
+}
+.total-breakdown .total-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.total-amount-display {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #38bdf8;
+}
+.payment-tabs-dream {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.payment-tab-btn {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.payment-tab-btn.active {
+  background: #0d9488;
+  color: #fff;
+  border-color: #0d9488;
+}
+.cash-input-large {
+  font-size: 1.4rem;
+  font-weight: 700;
+  text-align: right;
+  padding: 10px 14px;
+}
+.quick-cash-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.quick-cash-pill {
+  padding: 6px 12px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.quick-cash-pill:hover {
+  background: #e2e8f0;
+}
+.kembalian-box {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-top: 14px;
+}
+.kembalian-box.is-change {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+}
+.kembalian-box.is-short {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+.kembalian-label {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.kembalian-value {
+  font-size: 1.3rem;
+  font-weight: 800;
+}
+.modal-footer-dream {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+.btn-pay-dream {
+  flex: 2;
+  padding: 12px;
+  font-size: 1rem;
+}
+.btn-no-print-dream {
+  flex: 1;
+  border: 1px solid #0d9488;
+  color: #0d9488;
+  background: #fff;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-no-print-dream:hover {
+  background: #f0fdfa;
+}
+

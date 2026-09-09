@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 function formatRupiah(value) {
   return new Intl.NumberFormat("id-ID", {
@@ -8,59 +8,80 @@ function formatRupiah(value) {
   }).format(Number(value || 0));
 }
 
-export default function PaymentModal({ total, loading, onPay, onClose }) {
-  const [method, setMethod] = useState(null); // null | "cash" | "qris"
-  const [cashGiven, setCashGiven] = useState("");
+function parseNumber(str) {
+  if (typeof str === "number") return str;
+  if (!str) return 0;
+  const cleaned = String(str).replace(/[^\d]/g, "");
+  return Number(cleaned) || 0;
+}
+
+export default function PaymentModal({
+  total,
+  subtotal,
+  diskon = 0,
+  initialMethod = "cash",
+  customer = null,
+  loading = false,
+  onPay,
+  onClose
+}) {
+  const [method, setMethod] = useState(initialMethod || "cash"); // "cash" | "qris" | "card" | "hutang"
+  const [cashGiven, setCashGiven] = useState(String(total));
   const [qrisImage, setQrisImage] = useState("");
   const [qrisStatus, setQrisStatus] = useState("");
   const [qrisError, setQrisError] = useState("");
   const [qrisBusy, setQrisBusy] = useState(false);
   const [qrisReady, setQrisReady] = useState(false);
 
-  const cashNum = Number(cashGiven);
-  const change = Number.isFinite(cashNum) ? cashNum - total : 0;
-  const canProcessCash = method === "cash" && Number.isFinite(cashNum) && cashNum >= total;
+  const cashInputRef = useRef(null);
+
+  const cashNum = parseNumber(cashGiven);
+  const change = Math.max(cashNum - total, 0);
+  const isShort = method === "cash" && cashNum < total;
+  const canProcess = method !== "cash" || (cashNum >= total);
   const localLoading = loading || qrisBusy;
 
   useEffect(() => {
-    function onKeydown(e) {
-      const key = e.key.toLowerCase();
-      const targetTag = String(e.target?.tagName || "").toLowerCase();
-      const isTyping = targetTag === "input" || targetTag === "textarea" || targetTag === "select" || e.target?.isContentEditable;
+    // Focus cash input on open
+    setTimeout(() => {
+      cashInputRef.current?.focus();
+      cashInputRef.current?.select();
+    }, 50);
+  }, []);
 
-      if (e.key === "Escape" && !localLoading) {
+  // Pre-set cash amounts
+  const quickAmounts = [
+    { label: "Uang Pas", val: total },
+    { label: "10.000", val: 10000 },
+    { label: "20.000", val: 20000 },
+    { label: "50.000", val: 50000 },
+    { label: "100.000", val: 100000 },
+    { label: "200.000", val: 200000 }
+  ].filter((q) => q.label === "Uang Pas" || q.val >= total);
+
+  useEffect(() => {
+    function onKeydown(e) {
+      if (localLoading) return;
+
+      if (e.key === "Escape") {
         e.preventDefault();
         onClose();
         return;
       }
 
-      if (method === null && !isTyping) {
-        if (key === "1") {
-          e.preventDefault();
-          setMethod("cash");
-        }
-        if (key === "2") {
-          e.preventDefault();
-          setMethod("qris");
-        }
-      }
-
-      if (method === "cash" && e.key === "Enter" && canProcessCash && !localLoading) {
+      if (e.key === "Enter") {
         e.preventDefault();
-        onPay("cash", cashGiven);
-      }
-
-      if (method === "qris" && e.key === "Enter" && qrisReady && !localLoading) {
-        e.preventDefault();
-        confirmQrisPayment();
+        if (canProcess) {
+          handleExecutePayment("hanya_cetak");
+        }
       }
     }
 
     window.addEventListener("keydown", onKeydown);
     return () => window.removeEventListener("keydown", onKeydown);
-  }, [method, canProcessCash, localLoading, cashGiven, qrisReady, onPay, onClose]);
+  }, [method, canProcess, localLoading, cashNum, total]);
 
-  // Load static QRIS image when QRIS method selected
+  // Load static QRIS image when QRIS selected
   useEffect(() => {
     if (method !== "qris") return;
     let active = true;
@@ -71,127 +92,195 @@ export default function PaymentModal({ total, loading, onPay, onClose }) {
           setQrisImage(result.imageDataUrl || "");
           setQrisReady(Boolean(result.imageDataUrl));
           if (!result.imageDataUrl) {
-            setQrisError("QRIS_STATIC_CONTENT belum diisi di .env");
+            setQrisError("QRIS belum dikonfigurasi di Pengaturan Toko.");
           }
         }
       } catch (err) {
         if (active) setQrisError(`Gagal memuat QRIS: ${err.message}`);
       }
     })();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [method]);
 
-  function resetQrisState() {
-    setQrisImage("");
-    setQrisStatus("");
-    setQrisError("");
-    setQrisBusy(false);
-    setQrisReady(false);
+  function handleQuickAmount(amount) {
+    setCashGiven(String(amount));
+    cashInputRef.current?.focus();
   }
 
-  async function handlePrintQris() {
-    try {
-      setQrisBusy(true);
-      setQrisStatus("Mencetak QRIS...");
-      const result = await window.posApi.printQrisStatic({ amount: total });
-      setQrisStatus(result.message || "QRIS tercetak.");
-    } catch (err) {
-      setQrisStatus(`Gagal cetak: ${err.message}`);
-    } finally {
-      setQrisBusy(false);
-    }
-  }
-
-  async function confirmQrisPayment() {
-    try {
-      setQrisBusy(true);
-      setQrisStatus("Menyimpan order...");
-      await onPay("qris", null, { paid: true });
-    } catch (err) {
-      setQrisError(`Gagal: ${err.message}`);
-    } finally {
-      setQrisBusy(false);
-    }
+  function handleExecutePayment(printAction = "hanya_cetak") {
+    if (!canProcess || localLoading) return;
+    onPay(method, cashNum, method === "qris" ? { paid: true } : null, printAction);
   }
 
   return (
     <div className="modal-overlay" onClick={() => { if (!localLoading) onClose(); }}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Pembayaran</h2>
-        <p className="modal-total">Total: <strong>{formatRupiah(total)}</strong></p>
-
-        {/* Step 1: pilih metode */}
-        {method === null && (
-          <div className="payment-methods">
-            <button className="btn btn-cash" onClick={() => setMethod("cash")}>Cash</button>
-            <button className="btn btn-qris" onClick={() => setMethod("qris")}>QRIS</button>
+      <div className="modal payment-modal-dream" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header-dream">
+          <div className="modal-title-group">
+            <h3>Pembayaran Penjualan</h3>
+            <p className="modal-subtitle">
+              Pelanggan: <strong>{customer?.nama || "Pelanggan Umum"}</strong>
+            </p>
           </div>
-        )}
-        {method === null && <p className="small-text">Shortcut: `1` Cash, `2` QRIS, `Esc` tutup</p>}
+          <button className="btn-close-modal" onClick={onClose} disabled={localLoading}>
+            ✕
+          </button>
+        </div>
 
-        {/* Step 2a: Cash — input uang */}
+        {/* Bill Summary Banner */}
+        <div className="payment-total-banner">
+          <div className="total-breakdown">
+            {diskon > 0 && (
+              <span className="total-sub">
+                Subtotal: {formatRupiah(subtotal || total + diskon)} | Diskon: -{formatRupiah(diskon)}
+              </span>
+            )}
+            <span className="total-label">Total Tagihan</span>
+          </div>
+          <div className="total-amount-display">{formatRupiah(total)}</div>
+        </div>
+
+        {/* Payment Methods */}
+        <div className="payment-tabs-dream">
+          <button
+            type="button"
+            className={`payment-tab-btn ${method === "cash" ? "active" : ""}`}
+            onClick={() => setMethod("cash")}
+          >
+            💵 Tunai (Cash)
+          </button>
+          <button
+            type="button"
+            className={`payment-tab-btn ${method === "card" ? "active" : ""}`}
+            onClick={() => setMethod("card")}
+          >
+            💳 Non Tunai / Transfer
+          </button>
+          <button
+            type="button"
+            className={`payment-tab-btn ${method === "qris" ? "active" : ""}`}
+            onClick={() => setMethod("qris")}
+          >
+            📱 QRIS
+          </button>
+          <button
+            type="button"
+            className={`payment-tab-btn ${method === "hutang" ? "active" : ""}`}
+            onClick={() => setMethod("hutang")}
+          >
+            📑 Hutang
+          </button>
+        </div>
+
+        {/* Method Details */}
         {method === "cash" && (
-          <div className="cash-input-section">
-            <label htmlFor="cashGiven">Uang Diterima (Rp)</label>
-            <input id="cashGiven" type="number" min={total} step="1000"
-              placeholder={String(total)}
-              value={cashGiven}
-              onChange={(e) => setCashGiven(e.target.value)}
-              disabled={localLoading}
-              autoFocus
-            />
-            {Number.isFinite(cashNum) && cashNum >= total && (
-              <div className="change-display">Kembalian: <strong>{formatRupiah(change)}</strong></div>
-            )}
-            {Number.isFinite(cashNum) && cashNum > 0 && cashNum < total && (
-              <div className="change-display txt-out">Uang kurang {formatRupiah(total - cashNum)}</div>
-            )}
+          <div className="cash-payment-form">
+            <div className="form-group-dream">
+              <label htmlFor="jumlah_uang">Jumlah Uang Diterima (Rp)</label>
+              <input
+                ref={cashInputRef}
+                id="jumlah_uang"
+                type="text"
+                className="form-control-dream cash-input-large"
+                value={cashGiven}
+                onChange={(e) => setCashGiven(e.target.value.replace(/[^\d]/g, ""))}
+                placeholder={String(total)}
+                disabled={localLoading}
+              />
+            </div>
+
+            {/* Quick cash pills */}
+            <div className="quick-cash-row">
+              {quickAmounts.map((q, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  className="quick-cash-pill"
+                  onClick={() => handleQuickAmount(q.val)}
+                >
+                  {q.label === "Uang Pas" ? "Uang Pas" : formatRupiah(q.val)}
+                </button>
+              ))}
+            </div>
+
+            {/* Kembalian Display */}
+            <div className={`kembalian-box ${isShort ? "is-short" : "is-change"}`}>
+              {isShort ? (
+                <>
+                  <span className="kembalian-label">Uang Masih Kurang:</span>
+                  <span className="kembalian-value text-danger">{formatRupiah(total - cashNum)}</span>
+                </>
+              ) : (
+                <>
+                  <span className="kembalian-label">Kembalian:</span>
+                  <span className="kembalian-value text-success">{formatRupiah(change)}</span>
+                </>
+              )}
+            </div>
           </div>
         )}
 
-        {/* Step 2b: QRIS statis */}
+        {method === "card" && (
+          <div className="card-payment-info">
+            <p className="info-box-dream">
+              Pembayaran Non-Tunai / EDC / Transfer Bank sebesar <strong>{formatRupiah(total)}</strong>.
+              Pastikan pembayaran telah berhasil di mesin EDC atau mutasi rekening sebelum memproses struk.
+            </p>
+          </div>
+        )}
+
         {method === "qris" && (
-          <div className="qris-section">
-            {qrisImage && (
+          <div className="qris-payment-box">
+            {qrisImage ? (
               <div className="qris-preview">
-                <img src={qrisImage} alt="QRIS Statis" className="qris-image" />
-                <p className="small-text">Scan QRIS di atas untuk bayar <strong>{formatRupiah(total)}</strong></p>
+                <img src={qrisImage} alt="QRIS" className="qris-image" />
+                <p className="small-text">Scan QRIS di atas untuk membayar {formatRupiah(total)}</p>
               </div>
-            )}
-            {qrisStatus && <p className="small-text">{qrisStatus}</p>}
-            {qrisError && <p className="txt-out">{qrisError}</p>}
-          </div>
-        )}
-
-        {/* Actions */}
-        {method !== null && (
-          <div className="modal-actions">
-            <button className="btn btn-secondary" onClick={() => { setMethod(null); resetQrisState(); }} disabled={localLoading}>
-              ← Ganti Metode
-            </button>
-            {method === "cash" && (
-              <button className="btn btn-bayar" disabled={!canProcessCash || localLoading}
-                onClick={() => onPay("cash", cashGiven)}>
-                Proses Pembayaran
-              </button>
-            )}
-            {method === "qris" && qrisReady && (
-              <>
-                <button className="btn btn-secondary" disabled={localLoading}
-                  onClick={handlePrintQris}>
-                  Cetak QRIS
-                </button>
-                <button className="btn btn-bayar" disabled={localLoading}
-                  onClick={confirmQrisPayment}>
-                  Konfirmasi Pembayaran
-                </button>
-              </>
+            ) : (
+              <p className="txt-out">{qrisError || "Memuat QRIS..."}</p>
             )}
           </div>
         )}
 
-        <button className="btn-close-modal" onClick={onClose} disabled={localLoading}>✕</button>
+        {method === "hutang" && (
+          <div className="card-payment-info">
+            <p className="info-box-dream warning">
+              Transaksi akan dicatat sebagai <strong>Hutang / Piutang</strong> sebesar <strong>{formatRupiah(total)}</strong> atas nama <strong>{customer?.nama || "Pelanggan Umum"}</strong>.
+            </p>
+          </div>
+        )}
+
+        {/* Modal Footer Buttons */}
+        <div className="modal-footer-dream">
+          <button
+            type="button"
+            className="btn btn-secondary btn-cancel-dream"
+            onClick={onClose}
+            disabled={localLoading}
+          >
+            [ Esc ] Batal
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline-primary btn-no-print-dream"
+            onClick={() => handleExecutePayment("tidak_cetak")}
+            disabled={!canProcess || localLoading}
+          >
+            Bayar Tanpa Cetak
+          </button>
+          <button
+            type="button"
+            className="btn btn-teal btn-pay-dream"
+            onClick={() => handleExecutePayment("hanya_cetak")}
+            disabled={!canProcess || localLoading}
+          >
+            {localLoading ? "Memproses..." : "[ Enter ] Bayar & Cetak Struk"}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
+

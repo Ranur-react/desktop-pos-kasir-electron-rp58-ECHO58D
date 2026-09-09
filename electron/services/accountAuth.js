@@ -419,6 +419,40 @@ function buildAuthState(app, sessionAccount) {
   };
 }
 
+function upsertLocalUserFromApi(app, { id, username, displayName, password, role, branch }) {
+  const store = readStore(app);
+  const normalizedUsername = String(username || "").trim().toLowerCase();
+  let account = store.accounts.find((a) => a.username.toLowerCase() === normalizedUsername);
+
+  const now = new Date().toISOString();
+  if (account) {
+    account.displayName = displayName || account.displayName;
+    if (password) {
+      account.passwordHash = encryptPassword(password);
+    }
+    account.role = role || account.role || "cashier";
+    account.branch = branch || account.branch;
+    account.active = true;
+    account.updatedAt = now;
+  } else {
+    account = {
+      id: id || `user-${Date.now()}`,
+      username: normalizedUsername,
+      displayName: displayName || normalizedUsername,
+      passwordHash: encryptPassword(password || "123456"),
+      role: role || "cashier",
+      branch: branch || null,
+      active: true,
+      createdAt: now,
+      updatedAt: now
+    };
+    store.accounts.push(account);
+  }
+
+  writeStore(app, store);
+  return toPublicAccount(account);
+}
+
 module.exports = {
   authenticate,
   buildAuthState,
@@ -434,5 +468,7 @@ module.exports = {
   listAccounts,
   listRoleOptions,
   syncStoreToDatabase,
-  setupInitialAccount
+  setupInitialAccount,
+  upsertLocalUserFromApi
 };
+

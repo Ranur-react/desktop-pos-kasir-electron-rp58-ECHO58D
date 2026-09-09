@@ -1,4 +1,9 @@
-const mysql = require("mysql2/promise");
+let mysql = null;
+try {
+  mysql = require("mysql2/promise");
+} catch {
+  // mysql2 is optional when using REST API
+}
 const path = require("path");
 const fs = require("fs");
 const { resolveDataDir } = require("./dataPath");
