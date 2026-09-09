@@ -204,6 +204,10 @@ async function createTables(connection) {
 
 async function initializeConnection(app, config) {
   try {
+    if (pool && !pool._closed) {
+      await closeConnection();
+    }
+
     // Create the database if it doesn't exist
     const setupConnection = await mysql.createConnection({
       host: config.host,
@@ -238,16 +242,22 @@ async function initializeConnection(app, config) {
     return { success: true };
   } catch (err) {
     console.error("Error initializing DB connection:", err);
+    pool = null;
+    currentConfig = null;
     return { success: false, error: err.message };
   }
 }
 
 async function getPool() {
+  if (!pool || pool._closed) {
+    pool = null;
+    return null;
+  }
   return pool;
 }
 
 function isConnected() {
-  return pool !== null;
+  return Boolean(pool && !pool._closed);
 }
 
 function getConfig() {

@@ -299,7 +299,11 @@ async function createManualProduct(app, payload) {
   writeStore(app, store);
 
   if (db.isConnected()) {
-    await syncStoreToDatabase(store);
+    try {
+      await syncStoreToDatabase(store);
+    } catch (err) {
+      console.warn("[manualCatalog] sync to DB failed after create:", err.message);
+    }
   }
 
   return next;
@@ -324,7 +328,11 @@ async function updateManualProduct(app, payload) {
 
   writeStore(app, store);
   if (db.isConnected()) {
-    await syncStoreToDatabase(store);
+    try {
+      await syncStoreToDatabase(store);
+    } catch (err) {
+      console.warn("[manualCatalog] sync to DB failed after update:", err.message);
+    }
   }
 
   return store.products[idx];
@@ -342,7 +350,11 @@ async function deleteManualProduct(app, id) {
 
   writeStore(app, store);
   if (db.isConnected()) {
-    await syncStoreToDatabase(store);
+    try {
+      await syncStoreToDatabase(store);
+    } catch (err) {
+      console.warn("[manualCatalog] sync to DB failed after delete:", err.message);
+    }
   }
 
   return { success: true };
@@ -359,7 +371,11 @@ async function deleteManyManualProducts(app, ids) {
 
   writeStore(app, store);
   if (db.isConnected()) {
-    await syncStoreToDatabase(store);
+    try {
+      await syncStoreToDatabase(store);
+    } catch (err) {
+      console.warn("[manualCatalog] sync to DB failed after delete-many:", err.message);
+    }
   }
 
   return { success: true, deleted };
@@ -368,7 +384,11 @@ async function deleteManyManualProducts(app, ids) {
 async function syncAppStoreToDatabase(app) {
   if (!db.isConnected()) return;
   const store = readStore(app);
-  await syncStoreToDatabase(store);
+  try {
+    await syncStoreToDatabase(store);
+  } catch (err) {
+    console.warn("[manualCatalog] syncAppStoreToDatabase failed:", err.message);
+  }
 }
 
 module.exports = {
