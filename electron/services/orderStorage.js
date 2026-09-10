@@ -205,19 +205,30 @@ async function createOrder(app, payload) {
     const apiRes = await apiService.submitTransaction(app, salePayload);
     if (apiRes && apiRes.status === "success" && apiRes.data) {
       nofaktur = apiRes.data.nofaktur;
-      idJual = apiRes.data.id_jual;
+      idJual = apiRes.data.id_jual || apiRes.data.idjual;
       synced = true;
     }
   } catch (err) {
-    console.warn("[POS] Online transaction failed, saving to offline queue:", err.message);
+    // If the server was reached and returned a business validation error (e.g. 422 out of stock, 400, etc.),
+    // do NOT swallow it into offline queue! Throw it so the cashier is alerted immediately.
+    const isBusinessValidationError = err.status === 422 || err.status === 400 || (err.data && err.data.status === "error");
+    if (isBusinessValidationError) {
+      console.error("[POS] Online transaction rejected by server:", err.message);
+      throw err;
+    }
+
+    console.warn("[POS] Online transaction failed due to network unreachable, saving to offline queue:", err.message);
     syncError = err.message;
     synced = false;
   }
 
+  const finalOrderId = nofaktur || localId;
   const order = {
-    id: localId,
+    id: finalOrderId,
     nofaktur: nofaktur || null,
     id_jual: idJual || null,
+    offline_id: localId,
+    channel: "desktop",
     synced: synced,
     syncError: syncError,
     idpelanggan: Number(idpelanggan) || 0,
@@ -270,7 +281,7 @@ function returOrderItem(app, { orderId, lineId, reason }) {
   }
 
   const orders = readOrders(app);
-  const order = orders.find((o) => o.id === orderId);
+  const order = orders.find((o) => o.id === orderId || o.nofaktur === orderId || o.offline_id === orderId);
   if (!order) throw new Error("Order tidak ditemukan.");
   if (order.status !== "paid" && order.status !== "partial-return") {
     throw new Error("Order belum dibayar, tidak bisa retur.");
@@ -369,7 +380,7 @@ async function returOrderItemDB(orderId, lineId, reason, app) {
 
     // Mirror retur to JSON backup.
     const jsonOrders = readOrders(app);
-    const targetOrder = jsonOrders.find((o) => o.id === orderId);
+    const targetOrder = jsonOrders.find((o) => o.id === orderId || o.nofaktur === orderId || o.offline_id === orderId);
     if (targetOrder) {
       const targetLine = targetOrder.items.find((l) => l.lineId === lineId);
       if (targetLine && targetLine.returStatus !== "returned") {
@@ -412,7 +423,7 @@ async function getOrderById(app, orderId) {
     const fromDb = await getOrderByIdDB(orderId);
     if (fromDb) return fromDb;
   }
-  return readOrders(app).find((o) => o.id === orderId) || null;
+  return readOrders(app).find((o) => o.id === orderId || o.nofaktur === orderId || o.offline_id === orderId) || null;
 }
 
 async function getOrderByIdDB(orderId) {
@@ -787,9 +798,10 @@ async function syncAllOrdersToDatabase(app) {
       if (apiRes && apiRes.status === "success") {
         const results = apiRes.results || [];
         for (const res of results) {
-          const target = orders.find((o) => o.id === res.offline_id);
+          const target = orders.find((o) => o.id === res.offline_id || o.offline_id === res.offline_id);
           if (target) {
             target.synced = true;
+            target.id = res.nofaktur || target.id;
             target.nofaktur = res.nofaktur;
             target.id_jual = res.jual_id;
             target.syncError = null;

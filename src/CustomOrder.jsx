@@ -240,15 +240,24 @@ export default function CustomOrder({
     loadCustomers().catch(() => {});
   }, [catalogSource]);
 
-  // Realtime background sync for stock every 25 seconds
+  // Realtime background sync for stock every 15 seconds
   useEffect(() => {
     const stockSyncTimer = setInterval(() => {
       if (!catalogSearch.trim()) {
         loadCatalog(false).catch(() => {});
       }
-    }, 25000);
+    }, 15000);
     return () => clearInterval(stockSyncTimer);
   }, [catalogSearch]);
+
+  // Realtime sync when app window gains focus
+  useEffect(() => {
+    function onFocus() {
+      loadCatalog(false).catch(() => {});
+    }
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
 
   useEffect(() => {
     focusCatalogSearch();
@@ -301,10 +310,22 @@ export default function CustomOrder({
       return;
     }
 
+    const availableStock = Number(product.stock != null ? product.stock : 999999);
+    if (availableStock <= 0) {
+      setStatus(`⚠️ Stok "${product.title}" habis.`);
+      alert(`⚠️ Stok "${product.title}" habis dan tidak dapat dijual.`);
+      return;
+    }
+
     const pId = product.productId || product.id;
     const existingIdx = cart.findIndex((i) => (i.productId && i.productId === pId) || i.title === product.title);
 
     if (existingIdx >= 0) {
+      if (cart[existingIdx].qty + 1 > availableStock) {
+        setStatus(`⚠️ Stok "${product.title}" tidak mencukupi (sisa ${availableStock}).`);
+        alert(`⚠️ Stok "${product.title}" tidak mencukupi (sisa ${availableStock}).`);
+        return;
+      }
       setCart((prev) =>
         prev.map((item, idx) =>
           idx === existingIdx ? { ...item, qty: item.qty + 1 } : item
@@ -324,7 +345,7 @@ export default function CustomOrder({
           barcode: product.barcode || variant?.sku || null,
           variantTitle: variant?.title || null,
           productHandle: product.handle || null,
-          stock: product.stock
+          stock: availableStock
         }
       ]);
     }
@@ -402,7 +423,15 @@ export default function CustomOrder({
     setCart((prev) =>
       prev.map((i) => {
         if (i.id !== id) return i;
-        return { ...i, qty: Math.max(1, i.qty + delta) };
+        const nextQty = i.qty + delta;
+        if (nextQty < 1) return i;
+        const availableStock = Number(i.stock != null ? i.stock : 999999);
+        if (delta > 0 && nextQty > availableStock) {
+          setStatus(`⚠️ Stok "${i.title}" tidak mencukupi (sisa ${availableStock}).`);
+          alert(`⚠️ Stok "${i.title}" tidak mencukupi (sisa ${availableStock}).`);
+          return i;
+        }
+        return { ...i, qty: nextQty };
       })
     );
   }
@@ -530,17 +559,35 @@ export default function CustomOrder({
         printAction
       });
 
+      const purchasedItems = [...cart];
       setCart([]);
       setDiskon(0);
       setCartPage(0);
       setShowPayment(false);
 
-      const invoiceNum = result.order?.nofaktur || result.order?.id;
+      // Immediately deduct local stock in catalog state for purchased products
+      setCatalog((prev) => ({
+        ...prev,
+        products: prev.products.map((prod) => {
+          const matched = purchasedItems.find((c) => (c.productId && c.productId === prod.id) || c.title === prod.title);
+          if (matched) {
+            const currentStock = Number(prod.stock != null ? prod.stock : 999999);
+            const nextStock = Math.max(0, currentStock - (matched.qty || 1));
+            return { ...prod, stock: nextStock };
+          }
+          return prod;
+        })
+      }));
+
+      const invoiceNum = result.order?.nofaktur || result.order?.invoiceNumber || result.order?.id;
       setStatus(`✓ Transaksi berhasil (#${invoiceNum}). ${result.printResult?.message || ""}`);
       onRefresh();
+      // Background sync from server to ensure 100% exact stock
+      loadCatalog(false).catch(() => {});
       focusCatalogSearch();
     } catch (err) {
       setStatus(`Gagal transaksi: ${err.message}`);
+      alert(`⚠️ Transaksi Ditolak: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -754,15 +801,21 @@ export default function CustomOrder({
                 </div>
               )}
               {filteredProducts.map((p) => {
-                const isOutOfStock = p.stock <= 0;
+                const stockVal = Number(p.stock != null ? p.stock : 999);
+                const isOutOfStock = stockVal <= 0;
                 const hasVariants = p.variants && p.variants.length > 1;
                 const isVariantSelected = variantProduct && variantProduct.id === p.id;
                 return (
                   <button
                     key={p.id}
                     type="button"
-                    className={`product-card-enhanced ${isVariantSelected ? "variant-active-card" : ""} ${selectedProductId === p.id ? "active" : ""}`}
+                    className={`product-card-enhanced ${isVariantSelected ? "variant-active-card" : ""} ${selectedProductId === p.id ? "active" : ""} ${isOutOfStock ? "out-of-stock-card" : ""}`}
+                    disabled={isOutOfStock}
                     onClick={() => {
+                      if (isOutOfStock) {
+                        setStatus(`⚠️ Stok "${p.title}" habis!`);
+                        return;
+                      }
                       setSelectedProductId(p.id);
                       if (hasVariants) {
                         setVariantProduct(variantProduct?.id === p.id ? null : p);
@@ -1234,7 +1287,9 @@ function OrderTable({ orders, emptyMsg, expandedId, setExpandedId, canRetur, set
           <thead>
             <tr>
               <th>Waktu</th>
-              <th>Order ID</th>
+              <th>No. Faktur / Order ID</th>
+              <th>Channel</th>
+              <th>Kasir</th>
               <th>Items</th>
               <th>Metode</th>
               <th>Total</th>
@@ -1245,97 +1300,133 @@ function OrderTable({ orders, emptyMsg, expandedId, setExpandedId, canRetur, set
           <tbody>
             {paged.length === 0 && (
               <tr>
-                <td colSpan="7" className="empty-cell">{emptyMsg}</td>
+                <td colSpan="9" className="empty-cell">{emptyMsg}</td>
               </tr>
             )}
-            {paged.map((ord) => (
-              <Fragment key={ord.id}>
-                <tr
-                  className="order-row"
-                  onClick={() => setExpandedId(expandedId === ord.id ? null : ord.id)}
-                >
-                  <td>{formatDate(ord.createdAt)}</td>
-                  <td className="mono">{ord.id}</td>
-                  <td>{ord.items.length} item</td>
-                  <td>{ord.paymentMethod === "cash" ? "Cash" : "QRIS"}</td>
-                  <td className="txt-in">{formatRupiah(ord.subtotal)}</td>
-                  <td>
-                    <span className={`badge badge-${ord.status}`}>
-                      {ord.status === "paid"
-                        ? "Lunas"
-                        : ord.status === "partial-return"
-                          ? "Partial Retur"
-                          : "Full Retur"}
-                    </span>
-                  </td>
-                  <td>
-                    <button className="btn-expand">{expandedId === ord.id ? "▲" : "▼"}</button>
-                  </td>
-                </tr>
-                {expandedId === ord.id && (
-                  <tr>
-                    <td colSpan="7" className="order-detail-cell">
-                      <table className="inner-table">
-                        <thead>
-                          <tr>
-                            <th>Barang</th>
-                            <th>Harga</th>
-                            <th>Qty</th>
-                            <th>Subtotal</th>
-                            <th>Status</th>
-                            <th></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {ord.items.map((ln) => (
-                            <tr key={ln.lineId} className={ln.returStatus === "returned" ? "row-returned" : ""}>
-                              <td>{ln.title}</td>
-                              <td>{formatRupiah(ln.price)}</td>
-                              <td>{ln.qty}</td>
-                              <td>{formatRupiah(ln.lineTotal)}</td>
-                              <td>
-                                {ln.returStatus === "returned" ? (
-                                  <span className="badge badge-retur">Diretur</span>
-                                ) : (
-                                  "OK"
-                                )}
-                              </td>
-                              <td>
-                                {ln.returStatus !== "returned" && setReturTarget && (
-                                  <button
-                                    className="btn btn-retur-sm"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setReturTarget({ order: ord, line: ln });
-                                    }}
-                                    disabled={!canRetur}
-                                  >
-                                    Retur
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      {ord.returHistory?.length > 0 && (
-                        <div className="retur-history">
-                          <strong>Retur History:</strong>
-                          <ul>
-                            {ord.returHistory.map((rh, i) => (
-                              <li key={i}>
-                                {formatDate(rh.returAt)} - {rh.title} ({rh.qty}x {formatRupiah(rh.price)})
-                                {rh.reason ? ` - ${rh.reason}` : ""}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
+            {paged.map((ord) => {
+              const ch = (ord.channel || (ord.source === "server" ? "web" : "desktop")).toLowerCase();
+              const invoiceDisplay = ord.invoiceNumber || ord.nofaktur || ord.id;
+              const isOfflineQueued = ord.synced === false;
+              const isOnlineSynced = ord.synced === true || ord.source === "server" || Boolean(ord.invoiceNumber);
+              const orderStatus = ord.status || "paid";
+
+              return (
+                <Fragment key={ord.id}>
+                  <tr
+                    className="order-row"
+                    onClick={() => setExpandedId(expandedId === ord.id ? null : ord.id)}
+                  >
+                    <td>{formatDate(ord.createdAt || ord.date)}</td>
+                    <td className="mono" style={{ fontSize: "0.85rem" }}>
+                      <div style={{ fontWeight: 700 }}>{invoiceDisplay}</div>
+                      {ord.offline_id && ord.offline_id !== invoiceDisplay && (
+                        <div style={{ fontSize: "0.72rem", color: "#94a3b8" }}>{ord.offline_id}</div>
                       )}
                     </td>
+                    <td>
+                      {ch === "desktop" && <span className="channel-badge channel-desktop">🖥️ Desktop</span>}
+                      {ch === "mobile" && <span className="channel-badge channel-mobile">📱 Mobile</span>}
+                      {ch !== "desktop" && ch !== "mobile" && <span className="channel-badge channel-web">🌐 Web</span>}
+                    </td>
+                    <td style={{ fontSize: "0.84rem" }}>
+                      <div style={{ fontWeight: 600 }}>{ord.cashierName || ord.kasir || ord.user_nama || "Kasir"}</div>
+                      {ord.customerName && ord.customerName !== "Pelanggan Umum" && (
+                        <div style={{ fontSize: "0.72rem", color: "#64748b" }}>{ord.customerName}</div>
+                      )}
+                    </td>
+                    <td>{(ord.items?.length || ord.itemsCount || 0)} item</td>
+                    <td style={{ textTransform: "uppercase", fontSize: "0.82rem", fontWeight: 600 }}>
+                      {ord.paymentMethod === "cash" ? "Cash" : (ord.paymentMethod === "qris" ? "QRIS" : (ord.paymentMethod || "Cash"))}
+                    </td>
+                    <td className="txt-in" style={{ fontWeight: 700 }}>{formatRupiah(ord.total || ord.totalBayar || ord.subtotal)}</td>
+                    <td>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-start" }}>
+                        <span className={`badge badge-${orderStatus}`}>
+                          {orderStatus === "paid"
+                            ? "Lunas"
+                            : orderStatus === "partial-return"
+                              ? "Partial Retur"
+                              : orderStatus === "fully-returned" || orderStatus === "full-return"
+                                ? "Full Retur"
+                                : orderStatus}
+                        </span>
+                        {isOfflineQueued && (
+                          <span className="badge-offline" title="Tertahan di lokal / belum tersinkronisasi">⚠️ Offline</span>
+                        )}
+                        {isOnlineSynced && (
+                          <span className="badge-synced" title="Tersinkronisasi dengan Web POS">✓ Online</span>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <button className="btn-expand">{expandedId === ord.id ? "▲" : "▼"}</button>
+                    </td>
                   </tr>
-                )}
-              </Fragment>
-            ))}
+                  {expandedId === ord.id && (
+                    <tr>
+                      <td colSpan="9" className="order-detail-cell">
+                        <table className="inner-table">
+                          <thead>
+                            <tr>
+                              <th>Barang</th>
+                              <th>Harga</th>
+                              <th>Qty</th>
+                              <th>Subtotal</th>
+                              <th>Status</th>
+                              <th></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(ord.items || []).map((ln, idx) => (
+                              <tr key={ln.lineId || `it-${idx}`} className={ln.returStatus === "returned" ? "row-returned" : ""}>
+                                <td>{ln.title || ln.nama_produk}</td>
+                                <td>{formatRupiah(ln.price || ln.harga_jual)}</td>
+                                <td>{ln.qty || ln.jumlah}</td>
+                                <td>{formatRupiah(ln.lineTotal || ln.subtotal || ((ln.price || ln.harga_jual || 0) * (ln.qty || ln.jumlah || 1)))}</td>
+                                <td>
+                                  {ln.returStatus === "returned" ? (
+                                    <span className="badge badge-retur">Diretur</span>
+                                  ) : (
+                                    "OK"
+                                  )}
+                                </td>
+                                <td>
+                                  {ln.returStatus !== "returned" && setReturTarget && orderStatus !== "fully-returned" && (
+                                    <button
+                                      className="btn btn-retur-sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setReturTarget({ order: ord, line: ln });
+                                      }}
+                                      disabled={!canRetur}
+                                    >
+                                      Retur
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        {ord.returHistory?.length > 0 && (
+                          <div className="retur-history">
+                            <strong>Retur History:</strong>
+                            <ul>
+                              {ord.returHistory.map((rh, i) => (
+                                <li key={i}>
+                                  {formatDate(rh.returAt)} - {rh.title} ({rh.qty}x {formatRupiah(rh.price)})
+                                  {rh.reason ? ` - ${rh.reason}` : ""}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
