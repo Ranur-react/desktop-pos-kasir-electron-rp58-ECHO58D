@@ -125,7 +125,8 @@ async function login(app, username, password) {
 
   const data = await requestApi(url, {
     method: "POST",
-    body: JSON.stringify({ username, password })
+    body: JSON.stringify({ username, password }),
+    timeout: 3500
   });
 
   if (data && data.status === "success" && data.token) {
@@ -234,6 +235,30 @@ async function getReceipt(app, id) {
   return await requestApi(url, { method: "GET", headers });
 }
 
+async function fetchServerOrders(app, params = {}) {
+  const config = getServerConfig(app);
+  const searchParams = new URLSearchParams();
+  if (params.page) searchParams.set("page", params.page);
+  if (params.limit) searchParams.set("limit", params.limit);
+  if (params.search) searchParams.set("search", params.search);
+  if (params.date) searchParams.set("date", params.date);
+
+  const qs = searchParams.toString();
+  const url = `${config.serverUrl}/api/desktop/orders${qs ? `?${qs}` : ""}`;
+  const headers = config.token ? { Authorization: `Bearer ${config.token}` } : {};
+  return await requestApi(url, { method: "GET", headers });
+}
+
+function disconnectServer(app) {
+  const current = getServerConfig(app);
+  current.token = null;
+  current.user = null;
+  current.branch = null;
+  current.isConnected = false;
+  saveServerConfig(app, current);
+  return current;
+}
+
 module.exports = {
   getServerConfig,
   saveServerConfig,
@@ -245,6 +270,8 @@ module.exports = {
   createCustomer,
   submitTransaction,
   syncOffline,
-  getReceipt
+  getReceipt,
+  fetchServerOrders,
+  disconnectServer
 };
 

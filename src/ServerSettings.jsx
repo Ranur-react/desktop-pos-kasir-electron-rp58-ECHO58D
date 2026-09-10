@@ -3,7 +3,7 @@ import packageJson from "../package.json";
 
 const DEFAULT_SERVER_URL = packageJson.api_base_url || packageJson.apiBaseUrl || "https://atikahjaya.com";
 
-export default function ServerSettings({ onApplied }) {
+export default function ServerSettings({ onApplied, onLogout }) {
   const [config, setConfig] = useState({
     serverUrl: DEFAULT_SERVER_URL,
     token: null,
@@ -67,11 +67,48 @@ export default function ServerSettings({ onApplied }) {
       setLoading(true);
       setStatus("Menyimpan konfigurasi server...");
       const updated = await window.posApi.saveServerConfig(config);
-      setConfig(updated);
-      setStatus("✓ Konfigurasi Server Web berhasil disimpan.");
+      setConfig(updated.config || updated);
+      setStatus("✓ Konfigurasi Server Web POS berhasil disimpan! Mengalihkan ke halaman login akun Web POS...");
       onApplied?.(updated);
+
+      // Cleanly transition to login view without freezing Electron input focus
+      setTimeout(async () => {
+        if (onLogout) {
+          await onLogout();
+        } else {
+          try {
+            await window.posApi.logout();
+          } catch {}
+        }
+      }, 800);
     } catch (err) {
       setStatus(`✗ Gagal menyimpan: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    if (!window.confirm("Apakah Anda yakin ingin memutuskan hubungan dengan API Web POS? Aplikasi akan kembali beroperasi dalam mode offline/standalone.")) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setStatus("Memutuskan hubungan API...");
+      await window.posApi.disconnectServer();
+      setStatus("✓ Hubungan dengan API Web POS telah diputuskan. Mengalihkan ke mode offline...");
+      setTimeout(async () => {
+        if (onLogout) {
+          await onLogout();
+        } else {
+          try {
+            await window.posApi.logout();
+          } catch {}
+        }
+      }, 800);
+    } catch (err) {
+      setStatus(`✗ Gagal memutuskan hubungan: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -136,12 +173,15 @@ export default function ServerSettings({ onApplied }) {
         </div>
       )}
 
-      <div className="database-actions" style={{ display: "flex", gap: 10, marginTop: 16 }}>
+      <div className="btn-row" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <button type="button" className="btn btn-secondary" onClick={handleTest} disabled={loading}>
           {loading ? "Menguji..." : "Test Koneksi Server"}
         </button>
         <button type="button" className="btn btn-save" onClick={handleSave} disabled={loading} style={{ margin: 0, width: "auto" }}>
-          Simpan Konfigurasi Server
+          Simpan &amp; Hubungkan API Live
+        </button>
+        <button type="button" className="btn btn-out" onClick={handleDisconnect} disabled={loading} style={{ margin: 0, width: "auto", background: "#ef4444" }}>
+          Putuskan Hubungan API
         </button>
       </div>
 

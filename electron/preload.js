@@ -57,6 +57,7 @@ contextBridge.exposeInMainWorld("posApi", {
   setupInitialAccount: (payload) => ipcRenderer.invoke("auth:setup-initial", payload),
   login: (payload) => ipcRenderer.invoke("auth:login", payload),
   logout: () => ipcRenderer.invoke("auth:logout"),
+  focusWindow: () => ipcRenderer.invoke("window:focus"),
   listAccounts: () => ipcRenderer.invoke("account:list"),
   createAccount: (payload) => ipcRenderer.invoke("account:create", payload),
   changeAccountRole: (payload) => ipcRenderer.invoke("account:change-role", payload),
@@ -82,7 +83,20 @@ contextBridge.exposeInMainWorld("posApi", {
   previewQrisContent: (content) => ipcRenderer.invoke("qris:preview-content", content),
 
   // License
-  getLicenseState: () => ipcRenderer.invoke("license:get-state"),
+  getLicenseState: (opts) => ipcRenderer.invoke("license:get-state", opts),
   activateLicense: (code) => ipcRenderer.invoke("license:activate", code),
-  setLicenseReadOnlyMessage: (message) => ipcRenderer.invoke("license:set-readonly-message", message)
+  setLicenseReadOnlyMessage: (message) => ipcRenderer.invoke("license:set-readonly-message", message),
+
+  // Server & Web POS Live Integration
+  getServerConfig: () => ipcRenderer.invoke("server:get-config"),
+  saveServerConfig: (config) => ipcRenderer.invoke("server:save-config", config),
+  testServerConnection: (url) => ipcRenderer.invoke("server:test-connection", url),
+  disconnectServer: () => ipcRenderer.invoke("server:disconnect"),
+  getServerBootstrap: () => ipcRenderer.invoke("server:bootstrap"),
+  getOnlineProducts: (params) => ipcRenderer.invoke("server:get-products", params),
+  getOnlineCustomers: () => ipcRenderer.invoke("server:get-customers"),
+  createOnlineCustomer: (payload) => ipcRenderer.invoke("server:create-customer", payload),
+  fetchServerOrders: (params) => ipcRenderer.invoke("server:orders-list", params),
+  syncOfflineOrders: () => ipcRenderer.invoke("server:sync-offline"),
+  clearAllOrders: () => ipcRenderer.invoke("orders:clear-all")
 });

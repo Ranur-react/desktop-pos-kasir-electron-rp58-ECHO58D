@@ -2438,3 +2438,141 @@ table th {
   background: #f0fdfa;
 }
 
+/* ── Dynamic Store Brand in Topbar and Sidebar ── */
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 12px;
+}
+.sidebar-store-logo {
+  max-height: 42px;
+  max-width: 42px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 2px;
+  border: 1px solid #e2e8f0;
+}
+.sidebar-store-logo-placeholder {
+  font-size: 1.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: #f1f5f9;
+}
+.sidebar-brand-text h1 {
+  font-size: 1.08rem;
+  font-weight: 800;
+  margin: 0;
+  color: #0f172a;
+  line-height: 1.2;
+}
+.topbar-store-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 4px;
+}
+.topbar-store-logo {
+  max-height: 30px;
+  max-width: 30px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+}
+.topbar-store-name {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: #0f172a;
+}
+.topbar-page-heading {
+  margin: 0;
+  font-size: 1.15rem;
+  margin-left: 8px;
+  font-weight: 700;
+  color: #334155;
+}
+
+/* ── Adaptive Catalog Grid and Variant Card ── */
+.catalog-layout {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  width: 100%;
+  transition: all 0.2s ease-in-out;
+}
+.catalog-layout.no-variant .catalog-products-list {
+  width: 100% !important;
+  flex: 1 1 100%;
+}
+.catalog-layout.has-variant-open .catalog-products-list {
+  flex: 1 1 auto;
+  max-width: calc(100% - 280px);
+}
+.catalog-variant-card {
+  width: 270px;
+  min-width: 250px;
+  flex-shrink: 0;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  position: sticky;
+  top: 10px;
+  animation: fadeInRight 0.2s ease;
+}
+.variant-active-card {
+  border-color: #0d9488 !important;
+  box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.25) !important;
+}
+.variant-indicator-tag {
+  color: #0d9488;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.catalog-actions-sync {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+@keyframes fadeInRight {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ── Login Form Input Interactivity ── */
+.auth-shell,
+.auth-panel,
+.account-login-form,
+.account-login-form * {
+  pointer-events: auto !important;
+}
+.account-login-form input,
+.database-form-group input {
+  pointer-events: auto !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  cursor: text !important;
+  background: #ffffff !important;
+}
+.account-login-form input:focus,
+.database-form-group input:focus {
+  outline: none;
+  border-color: #0d9488 !important;
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.2) !important;
+}
+

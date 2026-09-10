@@ -115,26 +115,24 @@ function toRawGithubUrl(inputUrl) {
   }
 }
 
-function fetchText(url) {
-  return new Promise((resolve, reject) => {
-    const req = https.get(url, { timeout: 8000 }, (res) => {
-      if (res.statusCode !== 200) {
-        reject(new Error(`HTTP ${res.statusCode}`));
-        res.resume();
-        return;
-      }
+async function fetchText(url, timeoutMs = 2500) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-      const chunks = [];
-      res.on("data", (chunk) => chunks.push(chunk));
-      res.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
-    });
-
-    req.on("timeout", () => {
-      req.destroy(new Error("Request timeout"));
-    });
-
-    req.on("error", reject);
-  });
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    return await res.text();
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === "AbortError") {
+      throw new Error("Koneksi timeout");
+    }
+    throw err;
+  }
 }
 
 function parseLicenseLines(text) {
@@ -162,7 +160,7 @@ function parseLicenseLines(text) {
 function readLocalLicenseList(app) {
   const candidates = [
     path.join(getAppRoot(app), "license.txt"),
-    path.join(app.getAppPath(), "license.txt")
+    path.join(app.getAppPath ? app.getAppPath() : getAppRoot(app), "license.txt")
   ];
 
   for (const filePath of candidates) {
@@ -178,6 +176,20 @@ function readLocalLicenseList(app) {
   return "";
 }
 
+function saveLocalLicenseList(app, text) {
+  if (!text || typeof text !== "string") return;
+  const candidates = [
+    path.join(getAppRoot(app), "license.txt"),
+    path.join(app.getAppPath ? app.getAppPath() : getAppRoot(app), "license.txt")
+  ];
+  for (const filePath of candidates) {
+    try {
+      fs.writeFileSync(filePath, text, "utf-8");
+      break;
+    } catch {}
+  }
+}
+
 async function getLicenseRecords(app, { forceRefresh = false } = {}) {
   const now = Date.now();
   if (!forceRefresh && remoteCache.records && now - remoteCache.fetchedAt < REMOTE_CACHE_TTL_MS) {
@@ -189,16 +201,35 @@ async function getLicenseRecords(app, { forceRefresh = false } = {}) {
   }
 
   const env = loadDotEnv(app);
+  const code = (env.LICENSE_CODE || "").trim();
+
+  // Offline / Local-first optimization: If not forcing refresh and code is active locally, return immediately!
+  if (!forceRefresh && code) {
+    const localText = readLocalLicenseList(app);
+    if (localText) {
+      const localRecords = parseLicenseLines(localText);
+      const localItem = localRecords.get(code);
+      if (localItem && normalizeStatus(localItem.status) === "active" && !isDateExpired(localItem.expiresAt)) {
+        remoteCache.records = localRecords;
+        remoteCache.fetchedAt = now;
+        remoteCache.source = "local:license.txt";
+        remoteCache.error = "";
+        return { records: localRecords, source: "local:license.txt", error: "" };
+      }
+    }
+  }
+
   const sourceUrl = env.LICENSE_SOURCE_URL || DEFAULT_LICENSE_SOURCE_URL;
   const rawUrl = toRawGithubUrl(sourceUrl);
 
   try {
-    const remoteText = await fetchText(rawUrl);
+    const remoteText = await fetchText(rawUrl, 2500);
     const records = parseLicenseLines(remoteText);
     remoteCache.records = records;
     remoteCache.fetchedAt = now;
     remoteCache.source = `remote:${rawUrl}`;
     remoteCache.error = "";
+    saveLocalLicenseList(app, remoteText);
     return { records, source: remoteCache.source, error: "" };
   } catch (err) {
     const localText = readLocalLicenseList(app);

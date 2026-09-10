@@ -20,6 +20,7 @@ const {
   getEnvPath,
   setEnvKey
 } = require("./services/printer");
+const orderStorage = require("./services/orderStorage");
 const {
   getTodayOrders,
   createOrder,
@@ -28,7 +29,7 @@ const {
   getTodayOrdersSummary,
   getOrdersByDateRange,
   syncAllOrdersToDatabase
-} = require("./services/orderStorage");
+} = orderStorage;
 const {
   generateQris,
   queryQris,
@@ -610,46 +611,6 @@ ipcMain.handle("manual-product:delete-many", async (_, ids) => {
   };
 });
 
-// ── Web Server API IPC ──
-
-ipcMain.handle("server:get-config", async () => {
-  return apiService.getServerConfig(app);
-});
-
-ipcMain.handle("server:save-config", async (_, config) => {
-  await ensureLicenseAllowsWrite();
-  return apiService.saveServerConfig(app, config);
-});
-
-ipcMain.handle("server:test-connection", async (_, serverUrl) => {
-  return apiService.testConnection(serverUrl);
-});
-
-ipcMain.handle("server:get-bootstrap", async () => {
-  return apiService.getBootstrap(app);
-});
-
-ipcMain.handle("catalog:get-online", async (_, params) => {
-  ensurePermission("view_order");
-  return apiService.getProducts(app, params);
-});
-
-ipcMain.handle("customers:get-online", async (_, search) => {
-  ensurePermission("view_order");
-  return apiService.getCustomers(app, search);
-});
-
-ipcMain.handle("customers:create-online", async (_, payload) => {
-  await ensureLicenseAllowsWrite();
-  ensurePermission("create_order");
-  return apiService.createCustomer(app, payload);
-});
-
-ipcMain.handle("order:sync-offline", async () => {
-  await ensureLicenseAllowsWrite();
-  ensurePermission("view_order");
-  return syncAllOrdersToDatabase(app);
-});
 
 // ── Database Configuration IPC ──
 
@@ -766,6 +727,7 @@ ipcMain.handle("auth:login", async (_, payload) => {
   let isOnline = false;
   let message = "";
   let apiUser = null;
+  let onlineError = "";
 
   // 1. Try online authentication with Web Server
   try {
@@ -788,17 +750,41 @@ ipcMain.handle("auth:login", async (_, payload) => {
       activeSessionUserId = localAcc.id;
       loginSuccess = true;
       message = `Login berhasil (Online: ${apiRes.user.cabang_nama || "Cabang Utama"}).`;
+    } else {
+      onlineError = apiRes?.message || "Kredensial salah pada Web Server.";
     }
   } catch (apiErr) {
-    console.warn("[Auth] Online login failed, attempting local offline fallback:", apiErr.message);
+    onlineError = apiErr.message || "Koneksi ke Web Server gagal.";
+    console.warn("[Auth] Online login failed:", onlineError);
   }
 
-  // 2. Offline fallback to local credentials
+  // 2. If online login failed, handle offline / fallback
   if (!loginSuccess) {
-    const account = accountAuth.authenticate(app, payload);
-    activeSessionUserId = account.id;
-    loginSuccess = true;
-    message = "Login berhasil (Mode Offline).";
+    const serverConfig = apiService.getServerConfig(app);
+    const hasServerConfigured = Boolean(serverConfig?.serverUrl);
+
+    // If connected to API: ONLY allow local admin to login offline to disconnect / manage
+    if (hasServerConfigured) {
+      const isLocalAdmin = accountAuth.isLocalAdminCredentials(app, payload);
+      if (isLocalAdmin) {
+        const account = accountAuth.authenticate(app, payload);
+        activeSessionUserId = account.id;
+        loginSuccess = true;
+        message = "Jaringan Web POS terputus. Login darurat sebagai Admin Lokal berhasil. Anda dapat memutuskan hubungan API di menu Server jika ingin kembali ke offline.";
+      } else {
+        throw new Error(
+          onlineError.includes("Kredensial salah") 
+            ? onlineError 
+            : `Gagal terhubung ke Web Server: ${onlineError}. Kasir tidak dapat login saat jaringan terputus. Silakan hubungi Admin.`
+        );
+      }
+    } else {
+      // Standalone mode without server configured
+      const account = accountAuth.authenticate(app, payload);
+      activeSessionUserId = account.id;
+      loginSuccess = true;
+      message = "Login berhasil (Mode Standalone Offline).";
+    }
   }
 
   return {
@@ -812,11 +798,24 @@ ipcMain.handle("auth:login", async (_, payload) => {
 
 ipcMain.handle("auth:logout", async () => {
   activeSessionUserId = null;
+  const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+  if (win) {
+    win.focus();
+    win.webContents?.focus();
+  }
   return {
     success: true,
     message: "Logout berhasil.",
     state: accountAuth.buildAuthState(app, null)
   };
+});
+
+ipcMain.handle("window:focus", async () => {
+  const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+  if (win && !win.isFocused()) {
+    win.focus();
+  }
+  return true;
 });
 
 ipcMain.handle("account:list", async () => {
@@ -1134,8 +1133,9 @@ ipcMain.handle("qris:preview-content", async (_, content) => {
 
 // ── License IPC ──
 
-ipcMain.handle("license:get-state", async () => {
-  return licenseService.getLicenseState(app, { forceRefresh: true });
+ipcMain.handle("license:get-state", async (_, options = {}) => {
+  const forceRefresh = Boolean(options && options.forceRefresh);
+  return licenseService.getLicenseState(app, { forceRefresh });
 });
 
 ipcMain.handle("license:activate", async (_, code) => {
@@ -1145,4 +1145,63 @@ ipcMain.handle("license:activate", async (_, code) => {
 ipcMain.handle("license:set-readonly-message", async (_, message) => {
   return licenseService.saveReadOnlyMessage(app, message);
 });
+
+// ── Server & Web POS API IPC ──
+
+ipcMain.handle("server:get-config", async () => {
+  return apiService.getServerConfig(app);
+});
+
+ipcMain.handle("server:save-config", async (_, newConfig) => {
+  const updated = apiService.saveServerConfig(app, newConfig);
+  return { success: true, config: updated };
+});
+
+ipcMain.handle("server:test-connection", async (_, url) => {
+  return apiService.testConnection(app, url);
+});
+
+ipcMain.handle("server:disconnect", async () => {
+  const cfg = apiService.disconnectServer(app);
+  return { success: true, config: cfg, message: "Koneksi ke Server Web POS telah diputuskan. Mode offline aktif." };
+});
+
+ipcMain.handle("server:bootstrap", async () => {
+  return apiService.getBootstrap(app);
+});
+
+ipcMain.handle("server:get-products", async (_, params) => {
+  return apiService.getProducts(app, params);
+});
+
+ipcMain.handle("server:get-customers", async () => {
+  return apiService.getCustomers(app);
+});
+
+ipcMain.handle("server:create-customer", async (_, payload) => {
+  return apiService.createCustomer(app, payload);
+});
+
+ipcMain.handle("server:orders-list", async (_, params) => {
+  return apiService.fetchServerOrders(app, params);
+});
+
+ipcMain.handle("server:sync-offline", async () => {
+  return orderStorage.syncAllOrdersToDatabase(app);
+});
+
+ipcMain.handle("orders:clear-all", async () => {
+  const { saveTransactions } = require("./services/storage");
+  try {
+    saveTransactions(app, []);
+  } catch {}
+  return orderStorage.clearAllOrders(app);
+});
+
+// Aliases for backward compatibility
+ipcMain.handle("catalog:get-online", async (_, params) => apiService.getProducts(app, params));
+ipcMain.handle("customers:get-online", async (_, search) => apiService.getCustomers(app, search));
+ipcMain.handle("customers:create-online", async (_, payload) => apiService.createCustomer(app, payload));
+ipcMain.handle("order:sync-offline", async () => orderStorage.syncAllOrdersToDatabase(app));
+
 

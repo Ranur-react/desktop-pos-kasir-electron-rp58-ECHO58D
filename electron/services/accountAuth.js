@@ -308,6 +308,19 @@ function authenticate(app, payload) {
   return account;
 }
 
+function isLocalAdminCredentials(app, payload) {
+  const username = normalizeUsername(payload?.username);
+  const password = String(payload?.password || "");
+  if (!username || !password) return false;
+
+  const store = readStore(app);
+  const account = store.accounts.find((item) => item.username === username);
+  if (!account || account.active === false || account.role !== "admin") {
+    return false;
+  }
+  return decryptAndVerifyPassword(password, account.passwordCipher);
+}
+
 function listAccounts(app) {
   const store = readStore(app);
   return store.accounts
@@ -469,6 +482,7 @@ module.exports = {
   listRoleOptions,
   syncStoreToDatabase,
   setupInitialAccount,
-  upsertLocalUserFromApi
+  upsertLocalUserFromApi,
+  isLocalAdminCredentials
 };
 

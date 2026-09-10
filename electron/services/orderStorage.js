@@ -894,6 +894,54 @@ async function syncAllOrdersToDatabase(app) {
   };
 }
 
+async function clearAllOrders(app) {
+  const dataDir = resolveDataDir(app);
+  let deletedFilesCount = 0;
+
+  if (fs.existsSync(dataDir)) {
+    const files = fs.readdirSync(dataDir);
+    for (const f of files) {
+      if (f.startsWith("orders-") && f.endsWith(".json")) {
+        try {
+          fs.unlinkSync(path.join(dataDir, f));
+          deletedFilesCount++;
+        } catch {}
+      }
+      if (f.startsWith("transactions-") && f.endsWith(".json")) {
+        try {
+          fs.unlinkSync(path.join(dataDir, f));
+          deletedFilesCount++;
+        } catch {}
+      }
+      if (f === "offline-orders-queue.json") {
+        try {
+          fs.unlinkSync(path.join(dataDir, f));
+          deletedFilesCount++;
+        } catch {}
+      }
+    }
+  }
+
+  // Also truncate in local MySQL DB if connected
+  try {
+    const pool = await db.getPool();
+    if (pool) {
+      await pool.execute("DELETE FROM order_items");
+      await pool.execute("DELETE FROM orders");
+      try {
+        await pool.execute("DELETE FROM transactions");
+      } catch {}
+    }
+  } catch (err) {
+    console.warn("[POS] Failed to clear DB orders:", err.message);
+  }
+
+  return {
+    success: true,
+    message: `Berhasil mengosongkan seluruh histori transaksi lokal (${deletedFilesCount} file dibersihkan).`
+  };
+}
+
 module.exports = {
   getTodayOrders,
   createOrder,
@@ -903,5 +951,6 @@ module.exports = {
   getOrdersByDateRange,
   getAllOrdersForSync,
   syncOrderToDatabase,
-  syncAllOrdersToDatabase
+  syncAllOrdersToDatabase,
+  clearAllOrders
 };

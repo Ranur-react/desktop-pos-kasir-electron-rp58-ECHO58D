@@ -55,6 +55,7 @@ export default function App() {
 
   // -- Auth state --
   const [authLoading, setAuthLoading] = useState(true);
+  const [authSubmitting, setAuthSubmitting] = useState(false);
   const [authStatus, setAuthStatus] = useState("");
   const [authState, setAuthState] = useState({
     enabled: false,
@@ -105,37 +106,123 @@ export default function App() {
   const nominalInputRef = useRef(null);
   const descInputRef = useRef(null);
   const sidebarRef = useRef(null);
+  const loginUsernameRef = useRef(null);
 
   const can = (key) => permissions[key] === true;
 
-  const tabMeta = {
-    order: { label: "Order Katalog", icon: "🧾", title: "POS Order Katalog" },
-    kasir: { label: "Kasir Cash", icon: "💵", title: "Sistem POS Kasir Cash" },
-    products: { label: "Produk (NEW)", icon: "📦", title: "Manajemen Produk & Inventori" },
-    store: { label: "Toko", icon: "🏬", title: "Konfigurasi & Pengaturan Toko" },
-    printer: { label: "Printer", icon: "🖨", title: "Konfigurasi Printer & Kasir" },
-    server: { label: "Server Web", icon: "🌐", title: "Integrasi Server Web POS & API" },
-    database: { label: "Database", icon: "🗄", title: "Konfigurasi Database Server" },
-    accounts: { label: "Akun", icon: "👤", title: "Manajemen Akun & Otoritas" }
-  };
+  const [serverStoreInfo, setServerStoreInfo] = useState(null);
+
+  useEffect(() => {
+    if (!authState.user && !authState.needsSetup) {
+      const t = setTimeout(() => {
+        loginUsernameRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(t);
+    }
+  }, [authState.user, authState.needsSetup]);
+
+  async function refreshServerBootstrap() {
+    try {
+      const res = await window.posApi.getServerBootstrap();
+      if (res && res.status === "success") {
+        setServerStoreInfo(res);
+        if (res.store?.theme_color) {
+          document.documentElement.style.setProperty("--brand-teal", res.store.theme_color);
+          document.documentElement.style.setProperty("--accent-in", res.store.theme_color);
+        }
+      }
+    } catch (e) {
+      console.warn("Bootstrap server sync warning:", e.message);
+    }
+  }
 
   const availableTabs = useMemo(() => {
+    const navItems = serverStoreInfo?.navigation || [];
+    const getNavSetting = (key) => navItems.find((n) => n.menu_key === key || n.route_path === key);
+
+    const orderNav = getNavSetting("order");
+    const kasirNav = getNavSetting("kasir");
+    const printerNav = getNavSetting("printer");
+
+    const dynamicOrderLabel = orderNav?.label || "Order Katalog";
+    const dynamicKasirLabel = kasirNav?.label || "Kasir Cash";
+    const dynamicPrinterLabel = printerNav?.label || "Printer";
+
+    const isWebCashier = Boolean(
+      authState.user && (
+        authState.user.role === "cashier" ||
+        authState.user.role_id === 3 ||
+        (authState.user.isServerAccount && authState.user.role !== "admin")
+      )
+    );
+
     const tabs = [];
-    if (can("view_order")) tabs.push({ key: "order", ...tabMeta.order });
-    if (can("view_kasir")) tabs.push({ key: "kasir", ...tabMeta.kasir });
-    if (can("view_product") || can("manage_product")) tabs.push({ key: "products", ...tabMeta.products });
-    if (can("manage_printer")) tabs.push({ key: "store", ...tabMeta.store });
-    if (!readOnlyByLicense && can("view_printer")) tabs.push({ key: "printer", ...tabMeta.printer });
-    if (!readOnlyByLicense && (can("view_database") || can("manage_database"))) {
-      tabs.push({ key: "server", ...tabMeta.server });
-      tabs.push({ key: "database", ...tabMeta.database });
+
+    // Order tab
+    const allowOrder = navItems.length > 0
+      ? (orderNav && Boolean(orderNav.can_access) && Boolean(orderNav.is_active))
+      : can("view_order");
+    if (allowOrder) {
+      tabs.push({
+        key: "order",
+        label: dynamicOrderLabel,
+        icon: orderNav?.icon || "🧾",
+        title: "" // title POS Order Katalog dihilangkan
+      });
     }
-    if (!readOnlyByLicense && can("manage_accounts")) tabs.push({ key: "accounts", ...tabMeta.accounts });
+
+    // Kasir tab
+    const allowKasir = navItems.length > 0
+      ? (kasirNav && Boolean(kasirNav.can_access) && Boolean(kasirNav.is_active))
+      : can("view_kasir");
+    if (allowKasir) {
+      tabs.push({
+        key: "kasir",
+        label: dynamicKasirLabel,
+        icon: kasirNav?.icon || "💵",
+        title: "Sistem POS Kasir Cash"
+      });
+    }
+
+    // Non-cashier technical product / store tabs
+    if (!isWebCashier) {
+      if (can("view_product") || can("manage_product")) {
+        tabs.push({ key: "products", label: "Produk (NEW)", icon: "📦", title: "Manajemen Produk & Inventori" });
+      }
+      if (can("manage_printer")) {
+        tabs.push({ key: "store", label: "Toko", icon: "🏬", title: "Konfigurasi & Pengaturan Toko" });
+      }
+    }
+
+    // Printer tab
+    const allowPrinter = navItems.length > 0
+      ? (printerNav && Boolean(printerNav.can_access) && Boolean(printerNav.is_active))
+      : (!readOnlyByLicense && can("view_printer"));
+    if (allowPrinter && !readOnlyByLicense) {
+      tabs.push({
+        key: "printer",
+        label: dynamicPrinterLabel,
+        icon: printerNav?.icon || "🖨",
+        title: "Konfigurasi Printer & Kasir"
+      });
+    }
+
+    // Technical server, database, accounts tabs: strictly hidden for web cashier
+    if (!isWebCashier) {
+      if (!readOnlyByLicense && (can("view_database") || can("manage_database"))) {
+        tabs.push({ key: "server", label: "Server Web", icon: "🌐", title: "Integrasi Server Web POS & API" });
+        tabs.push({ key: "database", label: "Database", icon: "🗄", title: "Konfigurasi Database Server" });
+      }
+      if (!readOnlyByLicense && can("manage_accounts")) {
+        tabs.push({ key: "accounts", label: "Akun", icon: "👤", title: "Manajemen Akun & Otoritas" });
+      }
+    }
+
     return tabs;
-  }, [permissions, readOnlyByLicense]);
+  }, [permissions, readOnlyByLicense, serverStoreInfo, authState.user]);
 
   const currentTabMeta = useMemo(() => {
-    return availableTabs.find((item) => item.key === tab) || availableTabs[0] || tabMeta.order;
+    return availableTabs.find((item) => item.key === tab) || availableTabs[0] || { key: "order", label: "Order", icon: "🧾", title: "" };
   }, [availableTabs, tab]);
 
   useEffect(() => {
@@ -206,9 +293,9 @@ export default function App() {
     return state;
   }
 
-  async function refreshLicenseState() {
+  async function refreshLicenseState(forceRefresh = false) {
     try {
-      const next = await window.posApi.getLicenseState();
+      const next = await window.posApi.getLicenseState({ forceRefresh });
       setLicenseState(next);
       if (next?.enteredCode) {
         setLicenseInput(next.enteredCode);
@@ -255,7 +342,7 @@ export default function App() {
     try {
       setLicenseLoading(true);
       setLicenseError("");
-      const next = await refreshLicenseState();
+      const next = await refreshLicenseState(true);
       if (next?.isWriteEnabled) {
         setAuthStatus("✓ Lisensi terverifikasi aktif.");
         setShowLicenseScreen(false);
@@ -277,6 +364,7 @@ export default function App() {
         const state = await refreshAuthState();
         if (state.user) {
           await loadDataForPermissions(state.permissions || {});
+          await refreshServerBootstrap();
         }
       } catch (err) {
         setAuthStatus(`Gagal memuat status auth: ${err.message}`);
@@ -287,6 +375,17 @@ export default function App() {
 
     init().catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!authState.user) return;
+    refreshServerBootstrap();
+
+    const interval = setInterval(() => {
+      refreshServerBootstrap();
+    }, 25000);
+
+    return () => clearInterval(interval);
+  }, [authState.user]);
 
   useEffect(() => {
     function onGlobalKeydown(e) {
@@ -339,6 +438,7 @@ export default function App() {
       setAuthState(result.state);
       setLoginForm({ username: "", password: "" });
       await loadDataForPermissions(result.state.permissions || {});
+      await refreshServerBootstrap();
       setAuthStatus(result.message || "Akun awal berhasil dibuat.");
     } catch (err) {
       setAuthStatus(`Setup akun gagal: ${err.message}`);
@@ -348,16 +448,20 @@ export default function App() {
   async function handleLogin(e) {
     e.preventDefault();
     setAuthStatus("");
+    setAuthSubmitting(true);
 
     try {
       const result = await window.posApi.login(loginForm);
       setAuthState(result.state);
       setLoginForm({ username: "", password: "" });
       await loadDataForPermissions(result.state.permissions || {});
+      await refreshServerBootstrap();
       setAuthStatus(result.message || "Login berhasil.");
       setTimeout(() => setAuthStatus(""), 3000);
     } catch (err) {
       setAuthStatus(`Login gagal: ${err.message}`);
+    } finally {
+      setAuthSubmitting(false);
     }
   }
 
@@ -718,9 +822,16 @@ export default function App() {
             <div className="database-form-group">
               <label htmlFor="login-username">Username</label>
               <input
+                ref={loginUsernameRef}
                 id="login-username"
-                value={loginForm.username}
+                type="text"
+                name="username"
+                autoFocus
+                autoComplete="username"
+                placeholder="Username akun Web POS / Lokal"
+                value={loginForm.username || ""}
                 onChange={(e) => setLoginForm((prev) => ({ ...prev, username: e.target.value }))}
+                disabled={authSubmitting}
               />
             </div>
 
@@ -729,12 +840,18 @@ export default function App() {
               <input
                 id="login-password"
                 type="password"
-                value={loginForm.password}
+                name="password"
+                autoComplete="current-password"
+                placeholder="Password akun"
+                value={loginForm.password || ""}
                 onChange={(e) => setLoginForm((prev) => ({ ...prev, password: e.target.value }))}
+                disabled={authSubmitting}
               />
             </div>
 
-            <button type="submit" className="btn btn-save">Login</button>
+            <button type="submit" className="btn btn-save" disabled={authSubmitting}>
+              {authSubmitting ? "Memproses Login..." : "Login"}
+            </button>
           </form>
 
           {authStatus && <div className="status">{authStatus}</div>}
@@ -764,8 +881,15 @@ export default function App() {
     <main className={`app-shell app-dashboard ${tab === "order" ? "order-focus-mode" : ""} ${tab === "order" && showOrderSidebar ? "order-sidebar-open" : ""}`}>
       <aside ref={sidebarRef} className="sidebar panel">
         <div className="sidebar-brand">
-          <h1>Barangmudo POS</h1>
-          <p className="small-text">Windows Cashier v2.1</p>
+          {serverStoreInfo?.store?.logo ? (
+            <img src={serverStoreInfo.store.logo} alt="Logo" className="sidebar-store-logo" />
+          ) : (
+            <div className="sidebar-store-logo-placeholder">🏬</div>
+          )}
+          <div className="sidebar-brand-text">
+            <h1>{serverStoreInfo?.store?.name || "Barangmudo POS"}</h1>
+            <p className="small-text">{serverStoreInfo?.store?.branch_name ? `Cabang ${serverStoreInfo.store.branch_name}` : "Windows Cashier v2.1"}</p>
+          </div>
         </div>
 
         <nav className="sidebar-nav">
@@ -834,14 +958,22 @@ export default function App() {
                 ☰
               </button>
             )}
-            <h2>{currentTabMeta.title}</h2>
+            <div className="topbar-store-brand">
+              {serverStoreInfo?.store?.logo ? (
+                <img src={serverStoreInfo.store.logo} alt="Logo" className="topbar-store-logo" />
+              ) : null}
+              <span className="topbar-store-name">
+                {serverStoreInfo?.store?.name || "Barangmudo POS"}
+              </span>
+            </div>
+            {tab !== "order" && currentTabMeta?.title && <h2 className="topbar-page-heading">{currentTabMeta.title}</h2>}
             <div className={`connection-pill ${readOnlyByLicense ? "connection-pill-warning" : "connection-pill-ok"}`}>
               {readOnlyByLicense ? "Mode Read-Only" : "POS Desktop Siap"}
             </div>
           </div>
 
           <div className="topbar-actions">
-            <div className="shift-label">Cabang: <strong>{authState.user?.branch?.name || "Cabang Utama"}</strong></div>
+            <div className="shift-label">Cabang: <strong>{serverStoreInfo?.store?.branch_name || authState.user?.branch?.name || "Cabang Utama"}</strong></div>
             <div className="shopify-label" style={{ background: "#0d9488", color: "#fff" }}>Web POS Live</div>
           </div>
         </header>
@@ -987,7 +1119,7 @@ export default function App() {
           )}
 
           {tab === "server" && (
-            <ServerSettings onApplied={() => {}} />
+            <ServerSettings onApplied={() => {}} onLogout={handleLogout} />
           )}
 
           {tab === "database" && can("view_database") && (

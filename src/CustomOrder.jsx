@@ -27,7 +27,7 @@ const CART_PAGE_SIZE = 10;
 const ORDER_PAGE_SIZE = 8;
 
 export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder = true, canRetur = true, compactMode = false }) {
-  const [catalogSource, setCatalogSource] = useState("api"); // "api" | "csv" | "manual"
+  const [catalogSource, setCatalogSource] = useState("api"); // permanently "api"
   const [catalog, setCatalog] = useState({
     products: [],
     categories: [],
@@ -40,6 +40,7 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
   const [catalogSearch, setCatalogSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
   const [selectedProductId, setSelectedProductId] = useState(null);
+  const [variantProduct, setVariantProduct] = useState(null);
   const [manualPrice, setManualPrice] = useState("");
   const [manualQty, setManualQty] = useState(1);
   const [viewMode, setViewMode] = useState("grid"); // "grid" | "list"
@@ -148,29 +149,46 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
 
         if (res && res.products) {
           const rawProds = res.products;
-          const formatted = rawProds.map((p) => ({
-            id: String(p.id_produk),
-            productId: p.id_produk,
-            title: p.nama_produk,
-            category: p.kategori_nama || "Umum",
-            kategori_id: p.kategori_id,
-            price: Number(p.harga) || 0,
-            stock: Number(p.stok) || 0,
-            barcode: p.barcode || "",
-            sku: p.barcode || "",
-            unit: p.satuan_nama || "Pcs",
-            limitHarian: p.limit_harian || 0,
-            isRegisteredOnly: Boolean(p.khusus_pelanggan_terdaftar),
-            image: p.image || "",
-            variants: [
-              {
-                id: String(p.id_produk),
-                title: p.satuan_nama || "Pcs",
-                price: Number(p.harga) || 0,
-                sku: p.barcode || ""
-              }
-            ]
-          }));
+          const formatted = rawProds.map((p) => {
+            const variants = Array.isArray(p.variants) && p.variants.length > 0
+              ? p.variants.map((v) => ({
+                  id: String(v.id || v.id_satuan || v.harga_id || Math.random()),
+                  title: v.title || v.nama_satuan || v.satuan || p.satuan_nama || "Pcs",
+                  price: Number(v.price || v.harga || p.harga) || 0,
+                  sku: v.sku || v.barcode || p.barcode || "",
+                  barcode: v.barcode || p.barcode || "",
+                  satuan_id: v.satuan_id || v.id_satuan || null,
+                  harga_id: v.harga_id || null
+                }))
+              : [
+                  {
+                    id: String(p.id_produk),
+                    title: p.satuan_nama || "Pcs",
+                    price: Number(p.harga) || 0,
+                    sku: p.barcode || "",
+                    barcode: p.barcode || "",
+                    satuan_id: p.satuan_id || null,
+                    harga_id: null
+                  }
+                ];
+
+            return {
+              id: String(p.id_produk),
+              productId: p.id_produk,
+              title: p.nama_produk,
+              category: p.kategori_nama || "Umum",
+              kategori_id: p.kategori_id,
+              price: Number(p.harga) || 0,
+              stock: Number(p.stok) || 0,
+              barcode: p.barcode || "",
+              sku: p.barcode || "",
+              unit: p.satuan_nama || "Pcs",
+              limitHarian: p.limit_harian || 0,
+              isRegisteredOnly: Boolean(p.khusus_pelanggan_terdaftar),
+              image: p.image || "",
+              variants
+            };
+          });
 
           const categories = [
             ...new Set(formatted.map((p) => p.category).filter(Boolean))
@@ -195,22 +213,6 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
             setStatus(`✓ ${formatted.length} produk realtime tersinkronisasi dari Web POS.`);
           }
         }
-      } else if (catalogSource === "csv") {
-        setStatus(forceReload ? "Memuat ulang katalog CSV..." : "Memuat katalog CSV Shopify...");
-        const data = forceReload ? await window.posApi.reloadCatalog() : await window.posApi.getCatalog();
-        setCatalog(data);
-        if (data.products.length > 0 && !selectedProductId) {
-          setSelectedProductId(data.products[0].id);
-        }
-        setStatus(`${data.products.length} produk bersumber dari file CSV.`);
-      } else {
-        setStatus("Memuat katalog produk manual...");
-        const data = await window.posApi.getManualCatalog();
-        setCatalog(data);
-        if (data.products.length > 0 && !selectedProductId) {
-          setSelectedProductId(data.products[0].id);
-        }
-        setStatus(`${data.products.length} produk manual aktif.`);
       }
     } catch (err) {
       setStatus(`Gagal memuat katalog: ${err.message}`);
@@ -223,6 +225,16 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
     loadCatalog(false).catch(() => {});
     loadCustomers().catch(() => {});
   }, [catalogSource]);
+
+  // Realtime background sync for stock every 25 seconds
+  useEffect(() => {
+    const stockSyncTimer = setInterval(() => {
+      if (!catalogSearch.trim()) {
+        loadCatalog(false).catch(() => {});
+      }
+    }, 25000);
+    return () => clearInterval(stockSyncTimer);
+  }, [catalogSearch]);
 
   useEffect(() => {
     focusCatalogSearch();
@@ -422,6 +434,31 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
     setShowPendingModal(false);
     setStatus(`✓ Order "${pendingItem.id}" dipulihkan.`);
     focusCatalogSearch();
+  }
+
+  async function handleResetAllOrders() {
+    const confirmed = window.confirm(
+      "PERINGATAN: Apakah Anda yakin ingin mengosongkan / mereset SEMUA data riwayat transaksi lokal?\n\nSemua riwayat transaksi dan antrean offline lokal akan dihapus agar bersih sebelum sinkronisasi dengan Web POS."
+    );
+    if (!confirmed) return;
+
+    try {
+      setLoading(true);
+      const res = await window.posApi.clearAllOrders();
+      if (res && res.success) {
+        alert("✓ Semua riwayat transaksi lokal berhasil dikosongkan.");
+        if (onRefresh) onRefresh();
+        setAllHistoryOrders([]);
+        setAllHistoryLoaded(false);
+        setStatus("✓ Semua transaksi lokal telah dibersihkan.");
+      } else {
+        alert("Gagal mereset transaksi: " + (res?.message || "Unknown error"));
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleQuickAddCustomer(e) {
@@ -627,30 +664,15 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
                 {catalog.products.length || 0} produk tersedia
               </p>
             </div>
-            <div className="variant-actions">
+            <div className="catalog-actions-sync">
               <button
-                className={`category-pill ${catalogSource === "api" ? "active" : ""}`}
-                onClick={() => setCatalogSource("api")}
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => loadCatalog(true)}
                 disabled={catalogLoading}
+                style={{ padding: "6px 12px", fontSize: "0.82rem", display: "flex", alignItems: "center", gap: 6 }}
               >
-                🌐 Web POS
-              </button>
-              <button
-                className={`category-pill ${catalogSource === "manual" ? "active" : ""}`}
-                onClick={() => setCatalogSource("manual")}
-                disabled={catalogLoading}
-              >
-                ✏️ Manual
-              </button>
-              <button
-                className={`category-pill ${catalogSource === "csv" ? "active" : ""}`}
-                onClick={() => setCatalogSource("csv")}
-                disabled={catalogLoading}
-              >
-                📁 CSV
-              </button>
-              <button className="btn btn-secondary" onClick={() => loadCatalog(true)} disabled={catalogLoading} style={{ padding: "4px 10px", fontSize: "0.82rem" }}>
-                {catalogLoading ? "Memuat..." : "🔄 Sinkron"}
+                {catalogLoading ? "Memuat..." : "🔄 Sinkron Produk"}
               </button>
             </div>
           </div>
@@ -700,9 +722,18 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
             ))}
           </div>
 
-          {/* Products List / Grid */}
-          <div className="catalog-layout" style={{ marginTop: 12 }}>
-            <div className={`catalog-products-list ${viewMode === "list" ? "view-list-mode" : "view-grid-mode"}`} style={{ display: "grid", gridTemplateColumns: viewMode === "grid" ? "repeat(auto-fill, minmax(180px, 1fr))" : "1fr", gap: 10 }}>
+          {/* Products List / Grid & Adaptive Variant Card */}
+          <div className={`catalog-layout ${variantProduct ? "has-variant-open" : "no-variant"}`} style={{ marginTop: 12 }}>
+            <div
+              className={`catalog-products-list ${viewMode === "list" ? "view-list-mode" : "view-grid-mode"}`}
+              style={{
+                display: "grid",
+                gridTemplateColumns: viewMode === "grid" ? "repeat(auto-fill, minmax(180px, 1fr))" : "1fr",
+                gap: 10,
+                width: "100%",
+                flex: 1
+              }}
+            >
               {filteredProducts.length === 0 && (
                 <div className="manual-fallback-box" style={{ gridColumn: "1 / -1", textAlign: "center", padding: 30 }}>
                   <div className="empty-cell">Tidak ada produk ditemukan untuk pencarian ini.</div>
@@ -710,16 +741,23 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
               )}
               {filteredProducts.map((p) => {
                 const isOutOfStock = p.stock <= 0;
+                const hasVariants = p.variants && p.variants.length > 1;
+                const isVariantSelected = variantProduct && variantProduct.id === p.id;
                 return (
                   <button
                     key={p.id}
                     type="button"
-                    className={`product-card-enhanced ${selectedProductId === p.id ? "active" : ""}`}
+                    className={`product-card-enhanced ${isVariantSelected ? "variant-active-card" : ""} ${selectedProductId === p.id ? "active" : ""}`}
                     onClick={() => {
                       setSelectedProductId(p.id);
-                      if (canCreateOrder && p.variants?.length > 0) {
-                        playScannerBeep();
-                        addVariantToCart(p, p.variants[0]);
+                      if (hasVariants) {
+                        setVariantProduct(variantProduct?.id === p.id ? null : p);
+                      } else {
+                        setVariantProduct(null);
+                        if (canCreateOrder) {
+                          playScannerBeep();
+                          addVariantToCart(p, p.variants?.[0]);
+                        }
                       }
                     }}
                   >
@@ -745,10 +783,57 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
                         {isOutOfStock ? "Habis" : `Stok: ${p.stock}`}
                       </span>
                     </div>
+                    {hasVariants && (
+                      <div className="variant-indicator-tag" style={{ marginTop: 5, fontSize: "0.74rem", color: "#0d9488", fontWeight: 700 }}>
+                        {p.variants.length} Satuan/Varian ▸
+                      </div>
+                    )}
                   </button>
                 );
               })}
             </div>
+
+            {variantProduct && (
+              <div className="catalog-variant-card panel">
+                <div className="variant-card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10, borderBottom: "1px solid #e2e8f0", paddingBottom: 8 }}>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: "0.95rem", color: "#1e293b" }}>Pilihan Satuan / Varian</h4>
+                    <span className="small-text" style={{ fontWeight: 600, color: "#0d9488" }}>{variantProduct.title}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-close-variant"
+                    onClick={() => setVariantProduct(null)}
+                    title="Tutup Panel Varian"
+                    style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.1rem", color: "#94a3b8" }}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="variant-card-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {variantProduct.variants.map((v) => (
+                    <div key={v.id} className="variant-item-box" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6 }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: "0.88rem" }}>{v.title}</div>
+                        <div style={{ fontWeight: 700, color: "#0d9488", fontSize: "0.85rem" }}>{formatRupiah(v.price)}</div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-teal"
+                        style={{ padding: "4px 10px", fontSize: "0.8rem" }}
+                        disabled={!canCreateOrder || variantProduct.stock <= 0}
+                        onClick={() => {
+                          playScannerBeep();
+                          addVariantToCart(variantProduct, v);
+                        }}
+                      >
+                        + Tambah
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {status && <div className="status" style={{ marginTop: 10 }}>{status}</div>}
@@ -976,6 +1061,7 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
         canRetur={canRetur}
         setReturTarget={setReturTarget}
         todayStr={todayStr}
+        onResetAllOrders={handleResetAllOrders}
       />
 
       {/* DreamPOS Payment Modal */}
@@ -1260,7 +1346,12 @@ function OrderHistoryPanel({
   allHistoryExpandedId, setAllHistoryExpandedId,
   allHistoryLoaded, setAllHistoryLoaded,
   canRetur, setReturTarget, todayStr,
+  onResetAllOrders,
 }) {
+  const [serverPage, setServerPage] = useState(1);
+  const [serverTotalPages, setServerTotalPages] = useState(1);
+  const [serverTotalCount, setServerTotalCount] = useState(0);
+
   const filteredToday = useMemo(() => {
     if (!orderSearch.trim()) return orders;
     const q = orderSearch.toLowerCase();
@@ -1277,22 +1368,49 @@ function OrderHistoryPanel({
     const q = allHistorySearch.toLowerCase();
     return allHistoryOrders.filter(
       (o) =>
-        o.id.toLowerCase().includes(q) ||
-        o.paymentMethod.toLowerCase().includes(q) ||
-        o.items.some((i) => i.title.toLowerCase().includes(q) || (i.sku || "").toLowerCase().includes(q))
+        (o.id && o.id.toLowerCase().includes(q)) ||
+        (o.faktur && o.faktur.toLowerCase().includes(q)) ||
+        (o.paymentMethod && o.paymentMethod.toLowerCase().includes(q)) ||
+        (o.items && o.items.some((i) => i.title.toLowerCase().includes(q) || (i.sku || "").toLowerCase().includes(q)))
     );
   }, [allHistoryOrders, allHistorySearch]);
 
-  async function loadAllHistory() {
+  async function loadAllHistory(targetPage = 1, searchQuery = allHistorySearch) {
     try {
       setAllHistoryLoading(true);
+      // Attempt server paginated fetch from Web POS API
+      const res = await window.posApi.fetchServerOrders({
+        page: targetPage,
+        limit: 15,
+        search: searchQuery?.trim() || undefined,
+        date: allHistoryFrom === allHistoryTo ? allHistoryFrom : undefined
+      });
+
+      if (res && res.status === "success" && Array.isArray(res.orders)) {
+        setAllHistoryOrders(res.orders);
+        if (res.pagination) {
+          setServerPage(res.pagination.page || targetPage);
+          setServerTotalPages(res.pagination.totalPages || 1);
+          setServerTotalCount(res.pagination.total || res.orders.length);
+        }
+        setAllHistoryLoaded(true);
+        setAllHistoryExpandedId(null);
+        return;
+      }
+
+      // Fallback to local date range
       const result = await window.posApi.getOrdersByDateRange({ from: allHistoryFrom, to: allHistoryTo });
       setAllHistoryOrders(Array.isArray(result) ? result : []);
       setAllHistoryPage(0);
       setAllHistoryExpandedId(null);
       setAllHistoryLoaded(true);
     } catch (err) {
-      setAllHistoryOrders([]);
+      try {
+        const result = await window.posApi.getOrdersByDateRange({ from: allHistoryFrom, to: allHistoryTo });
+        setAllHistoryOrders(Array.isArray(result) ? result : []);
+      } catch {
+        setAllHistoryOrders([]);
+      }
       setAllHistoryLoaded(true);
     } finally {
       setAllHistoryLoading(false);
@@ -1304,7 +1422,7 @@ function OrderHistoryPanel({
       setAllHistoryLoading(true);
       const result = await window.posApi.onlineSyncTransactions();
       if (result?.success) {
-        await loadAllHistory();
+        await loadAllHistory(1);
       }
       if (result?.message) {
         alert(result.message);
@@ -1319,44 +1437,65 @@ function OrderHistoryPanel({
   // Auto-load when switching to "all" tab for the first time
   useEffect(() => {
     if (historyTab === "all" && !allHistoryLoaded) {
-      loadAllHistory();
+      loadAllHistory(1);
     }
   }, [historyTab]);
 
   const allSummary = useMemo(() => {
     const paid = allHistoryOrders.filter((o) => o.status === "paid" || o.status === "partial-return");
     return {
-      total: paid.reduce((s, o) => s + o.subtotal, 0),
+      total: paid.reduce((s, o) => s + (Number(o.subtotal || o.grandTotal) || 0), 0),
       count: paid.length,
-      cash: paid.filter((o) => o.paymentMethod === "cash").reduce((s, o) => s + o.subtotal, 0),
-      qris: paid.filter((o) => o.paymentMethod === "qris").reduce((s, o) => s + o.subtotal, 0),
+      cash: paid.filter((o) => o.paymentMethod === "cash").reduce((s, o) => s + (Number(o.subtotal || o.grandTotal) || 0), 0),
+      qris: paid.filter((o) => o.paymentMethod === "qris").reduce((s, o) => s + (Number(o.subtotal || o.grandTotal) || 0), 0),
     };
   }, [allHistoryOrders]);
 
   return (
     <section className="panel order-history-panel">
-      <div className="oh-header">
-        <h2>Order History</h2>
-        <div className="oh-tabs">
-          <button
-            className={`oh-tab-btn${historyTab === "summary" ? " oh-tab-active" : ""}`}
-            onClick={() => setHistoryTab("summary")}
-          >
-            Summary Hari Ini
-          </button>
-          <button
-            className={`oh-tab-btn${historyTab === "today" ? " oh-tab-active" : ""}`}
-            onClick={() => setHistoryTab("today")}
-          >
-            Riwayat Hari Ini <span className="oh-badge">{orders.length}</span>
-          </button>
-          <button
-            className={`oh-tab-btn${historyTab === "all" ? " oh-tab-active" : ""}`}
-            onClick={() => setHistoryTab("all")}
-          >
-            Semua Riwayat Transaksi
-          </button>
+      <div className="oh-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <h2 style={{ margin: 0 }}>Order History</h2>
+          <div className="oh-tabs">
+            <button
+              className={`oh-tab-btn${historyTab === "summary" ? " oh-tab-active" : ""}`}
+              onClick={() => setHistoryTab("summary")}
+            >
+              Summary Hari Ini
+            </button>
+            <button
+              className={`oh-tab-btn${historyTab === "today" ? " oh-tab-active" : ""}`}
+              onClick={() => setHistoryTab("today")}
+            >
+              Riwayat Hari Ini <span className="oh-badge">{orders.length}</span>
+            </button>
+            <button
+              className={`oh-tab-btn${historyTab === "all" ? " oh-tab-active" : ""}`}
+              onClick={() => setHistoryTab("all")}
+            >
+              Semua Riwayat (Web POS)
+            </button>
+          </div>
         </div>
+
+        {onResetAllOrders && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onResetAllOrders}
+            title="Kosongkan semua riwayat transaksi lokal sebelum sinkronisasi dengan Web POS"
+            style={{
+              borderColor: "#ef4444",
+              color: "#dc2626",
+              padding: "6px 14px",
+              fontSize: "0.82rem",
+              fontWeight: 700,
+              background: "#fff"
+            }}
+          >
+            🗑️ Reset Semua Transaksi
+          </button>
+        )}
       </div>
 
       {historyTab === "summary" && (
@@ -1427,7 +1566,7 @@ function OrderHistoryPanel({
             />
             <button
               className="btn btn-secondary oh-search-btn"
-              onClick={loadAllHistory}
+              onClick={() => loadAllHistory(1)}
               disabled={allHistoryLoading}
             >
               {allHistoryLoading ? "Memuat..." : "Tampilkan"}
@@ -1443,33 +1582,77 @@ function OrderHistoryPanel({
 
           {allHistoryLoaded && (
             <div className="oh-all-summary">
-              <span>{allSummary.count} order</span>
+              <span>{serverTotalCount || allSummary.count} order</span>
               <span>Total: <strong>{formatRupiah(allSummary.total)}</strong></span>
               <span>Cash: {formatRupiah(allSummary.cash)}</span>
               <span>QRIS: {formatRupiah(allSummary.qris)}</span>
             </div>
           )}
 
-          <input
-            className="search-input search-full"
-            type="text"
-            placeholder="Cari order (ID, barang, metode)..."
-            value={allHistorySearch}
-            onChange={(e) => { setAllHistorySearch(e.target.value); setAllHistoryPage(0); }}
-          />
+          <div style={{ display: "flex", gap: 8, marginTop: 10, marginBottom: 10 }}>
+            <input
+              className="search-input search-full"
+              type="text"
+              placeholder="Cari faktur / order / nama barang di server Web POS..."
+              value={allHistorySearch}
+              onChange={(e) => {
+                setAllHistorySearch(e.target.value);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  loadAllHistory(1, e.target.value);
+                }
+              }}
+              style={{ flex: 1 }}
+            />
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => loadAllHistory(1, allHistorySearch)}
+              disabled={allHistoryLoading}
+              style={{ padding: "8px 14px" }}
+            >
+              Cari
+            </button>
+          </div>
 
           {allHistoryLoaded ? (
-            <OrderTable
-              orders={filteredAll}
-              emptyMsg={allHistoryOrders.length === 0 ? "Tidak ada order pada periode ini." : "Tidak ditemukan."}
-              expandedId={allHistoryExpandedId}
-              setExpandedId={setAllHistoryExpandedId}
-              canRetur={false}
-              setReturTarget={null}
-            />
+            <>
+              <OrderTable
+                orders={filteredAll}
+                emptyMsg={allHistoryOrders.length === 0 ? "Tidak ada order pada periode / filter ini." : "Tidak ditemukan."}
+                expandedId={allHistoryExpandedId}
+                setExpandedId={setAllHistoryExpandedId}
+                canRetur={false}
+                setReturTarget={null}
+              />
+              {serverTotalPages > 1 && (
+                <div className="paging" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, marginTop: 14 }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={serverPage <= 1 || allHistoryLoading}
+                    onClick={() => loadAllHistory(serverPage - 1)}
+                  >
+                    ← Sebelumnya
+                  </button>
+                  <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>
+                    Halaman {serverPage} dari {serverTotalPages} ({serverTotalCount} Transaksi)
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={serverPage >= serverTotalPages || allHistoryLoading}
+                    onClick={() => loadAllHistory(serverPage + 1)}
+                  >
+                    Selanjutnya →
+                  </button>
+                </div>
+              )}
+            </>
           ) : (
             <div className="empty-cell" style={{ padding: "24px 0", textAlign: "center" }}>
-              {allHistoryLoading ? "Memuat data..." : "Pilih rentang tanggal lalu klik Tampilkan."}
+              {allHistoryLoading ? "Memuat data dari server Web POS..." : "Pilih rentang tanggal lalu klik Tampilkan."}
             </div>
           )}
         </div>
