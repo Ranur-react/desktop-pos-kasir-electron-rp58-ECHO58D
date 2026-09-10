@@ -1038,7 +1038,7 @@ async function syncStoreConfigFromWeb(app, storeData) {
     setEnvKey("STORE_TITLE", storeData.name);
   }
 
-  const subtitle = storeData.subtitle || (storeData.branch_name ? `Cabang ${storeData.branch_name}` : "");
+  const subtitle = storeData.branch_name || storeData.subtitle || "";
   if (subtitle) {
     setEnvKey("STORE_SUBTITLE", subtitle);
   }
