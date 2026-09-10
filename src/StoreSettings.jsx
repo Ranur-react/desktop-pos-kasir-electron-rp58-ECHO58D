@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 const DEFAULT_CHAR_WIDTH = 32;
 
-function BillPreview({ cfg, charWidth }) {
+export function BillPreview({ cfg, charWidth }) {
   const w = Math.max(20, Math.min(80, Number(charWidth) || DEFAULT_CHAR_WIDTH));
 
   function line(char = "-") {

@@ -58,8 +58,8 @@ const SUPPORTED_ROLES = {
       create_transaction: true,
       print_receipt: true,
       open_drawer: true,
-      view_printer: false,
-      manage_printer: false,
+      view_printer: true,
+      manage_printer: true,
       view_database: false,
       manage_database: false,
       manage_accounts: false

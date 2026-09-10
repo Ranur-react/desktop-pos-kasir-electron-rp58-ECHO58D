@@ -158,7 +158,7 @@ export default function App() {
     const dynamicOrderLabel = orderNav?.label || "Order Katalog";
     const dynamicKasirLabel = kasirNav?.label || "Kasir Cash";
     const dynamicOrdersLabel = ordersNav?.label || "Riwayat Pesanan";
-    const dynamicPrinterLabel = printerNav?.label || "Printer";
+    const dynamicPrinterLabel = printerNav?.label || "Pengaturan Printer Struk";
 
     const isWebCashier = Boolean(
       authState.user && (
@@ -237,14 +237,14 @@ export default function App() {
       }
     }
 
-    // Tab Printer
+    // Tab Printer Struk
     const allowPrinter = isNavAllowed(printerNav, !readOnlyByLicense && can("view_printer"));
     if (allowPrinter && !readOnlyByLicense) {
       tabs.push({
         key: "printer",
         label: dynamicPrinterLabel,
         icon: mapNavIcon(printerNav?.icon, "🖨"),
-        title: "Konfigurasi Printer & Kasir"
+        title: dynamicPrinterLabel
       });
     }
 
@@ -1153,8 +1153,11 @@ export default function App() {
             <ProductManagement />
           )}
 
-          {tab === "printer" && can("view_printer") && (
-            <PrinterSettings onApplied={(cfg) => setPrinter(cfg || null)} />
+          {tab === "printer" && (can("view_printer") || availableTabs.some((t) => t.key === "printer")) && (
+            <PrinterSettings
+              onApplied={(cfg) => setPrinter(cfg || null)}
+              onStoreApplied={() => refreshServerBootstrap()}
+            />
           )}
 
           {tab === "store" && can("manage_printer") && (
