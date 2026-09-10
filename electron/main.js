@@ -62,6 +62,11 @@ function ensurePermission(permission) {
     throw new Error("Silakan login terlebih dahulu.");
   }
 
+  // Kasir & Admin berhak melihat dan mengatur konfigurasi printer serta struk
+  if (permission === "view_printer" || permission === "manage_printer") {
+    return;
+  }
+
   if (!accountAuth.hasPermission(sessionUser, permission)) {
     throw new Error("Akses ditolak. Role akun tidak memiliki izin untuk fitur ini.");
   }

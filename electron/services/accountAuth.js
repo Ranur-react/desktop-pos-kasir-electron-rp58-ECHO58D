@@ -224,6 +224,10 @@ function getRolePermissions(role) {
 
 function hasPermission(account, permission) {
   if (!account) return false;
+  if (account.role === "admin") return true;
+  if (permission === "view_printer" || permission === "manage_printer") {
+    return true;
+  }
   const rolePermissions = SUPPORTED_ROLES[account.role]?.permissions || {};
   return rolePermissions[permission] === true;
 }
