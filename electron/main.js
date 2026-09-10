@@ -1240,13 +1240,7 @@ ipcMain.handle("server:disconnect", async () => {
 });
 
 ipcMain.handle("server:bootstrap", async () => {
-  const res = await apiService.getBootstrap(app);
-  if (res && res.status === "success" && res.store) {
-    syncStoreConfigFromWeb(app, res.store).catch((err) => {
-      console.warn("[POS] Auto-sync store config warning:", err.message);
-    });
-  }
-  return res;
+  return apiService.getBootstrap(app);
 });
 
 ipcMain.handle("server:get-products", async (_, params) => {
