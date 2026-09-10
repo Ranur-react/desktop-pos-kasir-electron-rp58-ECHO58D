@@ -1289,7 +1289,41 @@ ipcMain.handle("server:create-customer", async (_, payload) => {
 });
 
 ipcMain.handle("server:orders-list", async (_, params) => {
-  return apiService.fetchServerOrders(app, params);
+  try {
+    return await apiService.fetchServerOrders(app, params);
+  } catch (err) {
+    console.warn("[POS] Gagal mengambil server:orders-list:", err.message);
+    try {
+      const from = params?.from || params?.date;
+      const to = params?.to || params?.date;
+      let localOrders = [];
+      if (from && to) {
+        localOrders = orderStorage.getOrdersByDateRange(app, { from, to });
+      } else {
+        localOrders = orderStorage.getTodayOrders(app);
+      }
+      const paid = localOrders.filter((o) => o.status === "paid" || o.status === "partial-return");
+      return {
+        status: "success",
+        isOfflineFallback: true,
+        orders: localOrders,
+        summary: {
+          totalSales: paid.reduce((s, o) => s + (Number(o.total || o.totalBayar || o.subtotal) || 0), 0),
+          totalOrders: localOrders.length,
+          totalCash: paid.filter((o) => o.paymentMethod === "cash").reduce((s, o) => s + (Number(o.total || o.totalBayar || o.subtotal) || 0), 0),
+          totalQris: paid.filter((o) => o.paymentMethod === "qris").reduce((s, o) => s + (Number(o.total || o.totalBayar || o.subtotal) || 0), 0)
+        },
+        pagination: {
+          page: 1,
+          limit: params?.limit || 20,
+          total: localOrders.length,
+          totalPages: 1
+        }
+      };
+    } catch {
+      throw err;
+    }
+  }
 });
 
 ipcMain.handle("server:sync-offline", async () => {

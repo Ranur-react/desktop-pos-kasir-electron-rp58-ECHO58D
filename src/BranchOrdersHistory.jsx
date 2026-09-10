@@ -108,6 +108,11 @@ export default function BranchOrdersHistory({ onRefreshParent }) {
 
       if (res && res.status === "success" && Array.isArray(res.orders)) {
         setOrders(res.orders);
+        if (res.isOfflineFallback) {
+          setError("Server Web POS sedang dalam pembaruan atau offline. Menampilkan riwayat transaksi lokal.");
+        } else {
+          setError(null);
+        }
         if (res.summary) {
           setSummary({
             totalSales: Number(res.summary.totalSales) || 0,
@@ -139,6 +144,19 @@ export default function BranchOrdersHistory({ onRefreshParent }) {
       }
     } catch (err) {
       console.error("fetchOrders error:", err);
+      try {
+        const localOrders = await window.posApi.getOrdersByDateRange({ from: fromDate, to: toDate });
+        if (Array.isArray(localOrders)) {
+          setOrders(localOrders);
+          const totalSales = localOrders.reduce((sum, o) => sum + (Number(o.total || o.totalBayar || o.subtotal) || 0), 0);
+          const totalCash = localOrders.filter(o => o.paymentMethod === "cash").reduce((sum, o) => sum + (Number(o.total || o.totalBayar || o.subtotal) || 0), 0);
+          const totalQris = localOrders.filter(o => o.paymentMethod === "qris").reduce((sum, o) => sum + (Number(o.total || o.totalBayar || o.subtotal) || 0), 0);
+          setSummary({ totalSales, totalOrders: localOrders.length, totalCash, totalQris });
+          setPagination({ page: 1, limit: localOrders.length || 20, total: localOrders.length, totalPages: 1 });
+          setError("Gagal terhubung ke server Web POS. Menampilkan riwayat transaksi offline lokal.");
+          return;
+        }
+      } catch {}
       setError(err.message || "Gagal mengambil riwayat pesanan.");
     } finally {
       setLoading(false);
@@ -634,3 +652,4 @@ export default function BranchOrdersHistory({ onRefreshParent }) {
     </div>
   );
 }
+
