@@ -26,7 +26,15 @@ function getDefaultAllHistoryFrom() {
 const CART_PAGE_SIZE = 10;
 const ORDER_PAGE_SIZE = 8;
 
-export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder = true, canRetur = true, compactMode = false }) {
+export default function CustomOrder({
+  orders,
+  summary,
+  onRefresh,
+  canCreateOrder = true,
+  canRetur = true,
+  compactMode = false,
+  initialHistoryTab = null
+}) {
   const [catalogSource, setCatalogSource] = useState("api"); // permanently "api"
   const [catalog, setCatalog] = useState({
     products: [],
@@ -68,7 +76,13 @@ export default function CustomOrder({ orders, summary, onRefresh, canCreateOrder
   const [returTarget, setReturTarget] = useState(null);
 
   // "summary" | "today" | "all"
-  const [historyTab, setHistoryTab] = useState("summary");
+  const [historyTab, setHistoryTab] = useState(initialHistoryTab || "summary");
+
+  useEffect(() => {
+    if (initialHistoryTab) {
+      setHistoryTab(initialHistoryTab);
+    }
+  }, [initialHistoryTab]);
 
   const [orderSearch, setOrderSearch] = useState("");
   const [orderPage, setOrderPage] = useState(0);

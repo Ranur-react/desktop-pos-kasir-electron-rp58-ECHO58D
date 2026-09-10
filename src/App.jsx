@@ -136,16 +136,28 @@ export default function App() {
     }
   }
 
+  const mapNavIcon = (ic, fallback) => {
+    if (!ic) return fallback;
+    if (ic === "receipt" || ic === "order") return "🧾";
+    if (ic === "cash" || ic === "kasir") return "💵";
+    if (ic === "clipboard" || ic === "orders") return "📋";
+    if (ic === "printer") return "🖨";
+    return ic;
+  };
+
   const availableTabs = useMemo(() => {
     const navItems = serverStoreInfo?.navigation || [];
-    const getNavSetting = (key) => navItems.find((n) => n.menu_key === key || n.route_path === key);
+    const getNavSetting = (key) =>
+      navItems.find((n) => n.key === key || n.menu_key === key || n.route_path === key);
 
     const orderNav = getNavSetting("order");
     const kasirNav = getNavSetting("kasir");
+    const ordersNav = getNavSetting("orders");
     const printerNav = getNavSetting("printer");
 
     const dynamicOrderLabel = orderNav?.label || "Order Katalog";
     const dynamicKasirLabel = kasirNav?.label || "Kasir Cash";
+    const dynamicOrdersLabel = ordersNav?.label || "Riwayat Pesanan";
     const dynamicPrinterLabel = printerNav?.label || "Printer";
 
     const isWebCashier = Boolean(
@@ -156,35 +168,66 @@ export default function App() {
       )
     );
 
+    const isAdmin = Boolean(
+      authState.user && (
+        authState.user.role === "admin" ||
+        authState.user.role_id === 1 ||
+        authState.user.role_id === 2 ||
+        (!authState.user.isServerAccount && authState.user.role === "admin")
+      )
+    );
+
+    // Helper: Tentukan izin akses menu
+    const isNavAllowed = (navItem, fallbackPermission) => {
+      // Admin (baik lokal maupun online) selalu punya hak akses operasional
+      if (isAdmin) return true;
+      // Jika konfigurasi navigasi diterima dari server web:
+      if (navItems.length > 0) {
+        if (!navItem) return false;
+        if (navItem.can_access !== undefined && !navItem.can_access) return false;
+        if (navItem.is_active !== undefined && !navItem.is_active) return false;
+        return true;
+      }
+      // Fallback offline / standalone
+      return Boolean(fallbackPermission);
+    };
+
     const tabs = [];
 
-    // Order tab
-    const allowOrder = navItems.length > 0
-      ? (orderNav && Boolean(orderNav.can_access) && Boolean(orderNav.is_active))
-      : can("view_order");
+    // Tab Order Katalog / Mesin Kasir
+    const allowOrder = isNavAllowed(orderNav, can("view_order"));
     if (allowOrder) {
       tabs.push({
         key: "order",
         label: dynamicOrderLabel,
-        icon: orderNav?.icon || "🧾",
-        title: "" // title POS Order Katalog dihilangkan
+        icon: mapNavIcon(orderNav?.icon, "🧾"),
+        title: "" // title POS Order Katalog dihilangkan untuk hemat ruang
       });
     }
 
-    // Kasir tab
-    const allowKasir = navItems.length > 0
-      ? (kasirNav && Boolean(kasirNav.can_access) && Boolean(kasirNav.is_active))
-      : can("view_kasir");
+    // Tab Kasir Cash Cepat
+    const allowKasir = isNavAllowed(kasirNav, can("view_kasir"));
     if (allowKasir) {
       tabs.push({
         key: "kasir",
         label: dynamicKasirLabel,
-        icon: kasirNav?.icon || "💵",
+        icon: mapNavIcon(kasirNav?.icon, "💵"),
         title: "Sistem POS Kasir Cash"
       });
     }
 
-    // Non-cashier technical product / store tabs
+    // Tab Riwayat Pesanan (jika aktif di navigasi server)
+    const allowOrders = isNavAllowed(ordersNav, can("view_order"));
+    if (ordersNav && allowOrders) {
+      tabs.push({
+        key: "orders",
+        label: dynamicOrdersLabel,
+        icon: mapNavIcon(ordersNav?.icon, "📋"),
+        title: "Riwayat Transaksi & Pesanan"
+      });
+    }
+
+    // Tab teknis produk / toko (khusus non-cashier)
     if (!isWebCashier) {
       if (can("view_product") || can("manage_product")) {
         tabs.push({ key: "products", label: "Produk (NEW)", icon: "📦", title: "Manajemen Produk & Inventori" });
@@ -194,20 +237,18 @@ export default function App() {
       }
     }
 
-    // Printer tab
-    const allowPrinter = navItems.length > 0
-      ? (printerNav && Boolean(printerNav.can_access) && Boolean(printerNav.is_active))
-      : (!readOnlyByLicense && can("view_printer"));
+    // Tab Printer
+    const allowPrinter = isNavAllowed(printerNav, !readOnlyByLicense && can("view_printer"));
     if (allowPrinter && !readOnlyByLicense) {
       tabs.push({
         key: "printer",
         label: dynamicPrinterLabel,
-        icon: printerNav?.icon || "🖨",
+        icon: mapNavIcon(printerNav?.icon, "🖨"),
         title: "Konfigurasi Printer & Kasir"
       });
     }
 
-    // Technical server, database, accounts tabs: strictly hidden for web cashier
+    // Tab teknis server, database, akun: khusus admin lokal
     if (!isWebCashier) {
       if (!readOnlyByLicense && (can("view_database") || can("manage_database"))) {
         tabs.push({ key: "server", label: "Server Web", icon: "🌐", title: "Integrasi Server Web POS & API" });
@@ -233,14 +274,16 @@ export default function App() {
     }
   }, [availableTabs, tab]);
 
-  useEffect(() => {
-    if (tab !== "order") {
-      setShowOrderSidebar(false);
-    }
-  }, [tab]);
+  const isOrderFocusTab = tab === "order" || tab === "orders";
 
   useEffect(() => {
-    if (tab !== "order" || !showOrderSidebar) return;
+    if (!isOrderFocusTab) {
+      setShowOrderSidebar(false);
+    }
+  }, [isOrderFocusTab]);
+
+  useEffect(() => {
+    if (!isOrderFocusTab || !showOrderSidebar) return;
 
     function handlePointerDown(event) {
       const target = event.target;
@@ -252,7 +295,7 @@ export default function App() {
 
     window.addEventListener("pointerdown", handlePointerDown);
     return () => window.removeEventListener("pointerdown", handlePointerDown);
-  }, [showOrderSidebar, tab]);
+  }, [showOrderSidebar, isOrderFocusTab]);
 
   async function loadBootstrap() {
     const data = await window.posApi.getBootstrap();
@@ -878,7 +921,7 @@ export default function App() {
   }
 
   return (
-    <main className={`app-shell app-dashboard ${tab === "order" ? "order-focus-mode" : ""} ${tab === "order" && showOrderSidebar ? "order-sidebar-open" : ""}`}>
+    <main className={`app-shell app-dashboard ${isOrderFocusTab ? "order-focus-mode" : ""} ${isOrderFocusTab && showOrderSidebar ? "order-sidebar-open" : ""}`}>
       <aside ref={sidebarRef} className="sidebar panel">
         <div className="sidebar-brand">
           {serverStoreInfo?.store?.logo ? (
@@ -947,7 +990,7 @@ export default function App() {
       <section className="workspace-area">
         <header className="dashboard-topbar panel workspace-topbar">
           <div className="topbar-brand">
-            {tab === "order" && (
+            {isOrderFocusTab && (
               <button
                 className="top-icon-btn order-sidebar-toggle-btn"
                 type="button"
@@ -966,7 +1009,7 @@ export default function App() {
                 {serverStoreInfo?.store?.name || "Barangmudo POS"}
               </span>
             </div>
-            {tab !== "order" && currentTabMeta?.title && <h2 className="topbar-page-heading">{currentTabMeta.title}</h2>}
+            {!isOrderFocusTab && currentTabMeta?.title && <h2 className="topbar-page-heading">{currentTabMeta.title}</h2>}
             <div className={`connection-pill ${readOnlyByLicense ? "connection-pill-warning" : "connection-pill-ok"}`}>
               {readOnlyByLicense ? "Mode Read-Only" : "POS Desktop Siap"}
             </div>
@@ -991,7 +1034,7 @@ export default function App() {
         )}
 
         <div className="workspace-body">
-          {tab === "order" && can("view_order") && (
+          {isOrderFocusTab && (
             <CustomOrder
               orders={orders}
               summary={orderSummary}
@@ -999,6 +1042,7 @@ export default function App() {
               canCreateOrder={can("create_order") && !readOnlyByLicense}
               canRetur={can("retur_order") && !readOnlyByLicense}
               compactMode={true}
+              initialHistoryTab={tab === "orders" ? "today" : undefined}
             />
           )}
 
