@@ -2448,13 +2448,15 @@ table th {
   margin-bottom: 12px;
 }
 .sidebar-store-logo {
-  max-height: 42px;
-  max-width: 42px;
+  width: 42px;
+  height: 42px;
+  aspect-ratio: 1 / 1;
   object-fit: contain;
   border-radius: 8px;
   background: #ffffff;
   padding: 2px;
   border: 1px solid #e2e8f0;
+  flex-shrink: 0;
 }
 .sidebar-store-logo-placeholder {
   font-size: 1.8rem;
@@ -2463,8 +2465,10 @@ table th {
   justify-content: center;
   width: 42px;
   height: 42px;
+  aspect-ratio: 1 / 1;
   border-radius: 8px;
   background: #f1f5f9;
+  flex-shrink: 0;
 }
 .sidebar-brand-text h1 {
   font-size: 1.08rem;
@@ -2480,12 +2484,14 @@ table th {
   margin-right: 4px;
 }
 .topbar-store-logo {
-  max-height: 30px;
-  max-width: 30px;
+  width: 30px;
+  height: 30px;
+  aspect-ratio: 1 / 1;
   object-fit: contain;
   border-radius: 6px;
   background: #fff;
   border: 1px solid #e2e8f0;
+  flex-shrink: 0;
 }
 .topbar-store-name {
   font-weight: 700;

@@ -924,7 +924,9 @@ export default function App() {
     <main className={`app-shell app-dashboard ${isOrderFocusTab ? "order-focus-mode" : ""} ${isOrderFocusTab && showOrderSidebar ? "order-sidebar-open" : ""}`}>
       <aside ref={sidebarRef} className="sidebar panel">
         <div className="sidebar-brand">
-          {serverStoreInfo?.store?.logo ? (
+          {serverStoreInfo?.store?.icon || serverStoreInfo?.store?.icon_toko ? (
+            <img src={serverStoreInfo.store.icon || serverStoreInfo.store.icon_toko} alt="Icon Toko" className="sidebar-store-logo" />
+          ) : serverStoreInfo?.store?.logo ? (
             <img src={serverStoreInfo.store.logo} alt="Logo" className="sidebar-store-logo" />
           ) : (
             <div className="sidebar-store-logo-placeholder">🏬</div>
@@ -1002,7 +1004,9 @@ export default function App() {
               </button>
             )}
             <div className="topbar-store-brand">
-              {serverStoreInfo?.store?.logo ? (
+              {serverStoreInfo?.store?.icon || serverStoreInfo?.store?.icon_toko ? (
+                <img src={serverStoreInfo.store.icon || serverStoreInfo.store.icon_toko} alt="Icon Toko" className="topbar-store-logo" />
+              ) : serverStoreInfo?.store?.logo ? (
                 <img src={serverStoreInfo.store.logo} alt="Logo" className="topbar-store-logo" />
               ) : null}
               <span className="topbar-store-name">

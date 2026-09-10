@@ -1027,6 +1027,78 @@ ipcMain.handle("store:sync-config", async () => {
   });
 });
 
+async function syncStoreConfigFromWeb(app, storeData) {
+  if (!storeData) return { success: false, message: "Data profil toko tidak ditemukan dari Web POS." };
+
+  const { setEnvKey, getRuntimeConfig } = require("./services/printer");
+  const { resolveDataDir } = require("./services/dataPath");
+
+  if (storeData.name) {
+    setEnvKey("STORE_TITLE", storeData.name);
+  }
+
+  const subtitle = storeData.subtitle || (storeData.branch_name ? `Cabang ${storeData.branch_name}` : "");
+  if (subtitle) {
+    setEnvKey("STORE_SUBTITLE", subtitle);
+  }
+
+  if (storeData.address) {
+    setEnvKey("STORE_ADDRESS", storeData.address);
+  }
+
+  if (storeData.phone) {
+    setEnvKey("STORE_WA", storeData.phone);
+  }
+
+  if (storeData.printer_char_width) {
+    setEnvKey("PRINTER_CHAR_WIDTH", String(storeData.printer_char_width));
+  }
+
+  // Download & sync 1:1 icon to local storage and STORE_LOGO_PATH
+  const iconUrl = storeData.icon || storeData.icon_toko;
+  let savedLogoPath = null;
+  if (iconUrl) {
+    try {
+      const dataDir = resolveDataDir(app);
+      const targetPath = path.join(dataDir, "store-icon-1x1.png");
+      const res = await fetch(iconUrl);
+      if (res.ok) {
+        const buffer = Buffer.from(await res.arrayBuffer());
+        fs.writeFileSync(targetPath, buffer);
+        setEnvKey("STORE_LOGO_PATH", targetPath);
+        savedLogoPath = targetPath;
+
+        // Also mirror into assets folder if accessible
+        try {
+          const assetsDir = path.resolve(__dirname, "..", "assets");
+          if (fs.existsSync(assetsDir)) {
+            fs.writeFileSync(path.join(assetsDir, "store-icon-1x1.png"), buffer);
+          }
+        } catch {}
+      }
+    } catch (err) {
+      console.warn("[POS] Gagal unduh icon 1:1 toko:", err.message);
+    }
+  }
+
+  return {
+    success: true,
+    message: "Pengaturan Informasi Toko & Struk berhasil disinkronkan dari Web POS.",
+    config: getRuntimeConfig(),
+    logoPath: savedLogoPath
+  };
+}
+
+ipcMain.handle("store:sync-web-config", async () => {
+  await ensureLicenseAllowsWrite();
+  ensurePermission("manage_printer");
+  const bootstrapRes = await apiService.getBootstrap(app);
+  if (!bootstrapRes || bootstrapRes.status !== "success" || !bootstrapRes.store) {
+    throw new Error("Gagal mengambil konfigurasi toko dari server Web POS.");
+  }
+  return syncStoreConfigFromWeb(app, bootstrapRes.store);
+});
+
 ipcMain.handle("store:pick-image", async () => {
   await ensureLicenseAllowsWrite();
   ensurePermission("manage_printer");
@@ -1167,7 +1239,13 @@ ipcMain.handle("server:disconnect", async () => {
 });
 
 ipcMain.handle("server:bootstrap", async () => {
-  return apiService.getBootstrap(app);
+  const res = await apiService.getBootstrap(app);
+  if (res && res.status === "success" && res.store) {
+    syncStoreConfigFromWeb(app, res.store).catch((err) => {
+      console.warn("[POS] Auto-sync store config warning:", err.message);
+    });
+  }
+  return res;
 });
 
 ipcMain.handle("server:get-products", async (_, params) => {

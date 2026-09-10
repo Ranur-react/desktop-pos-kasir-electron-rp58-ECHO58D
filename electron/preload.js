@@ -73,6 +73,7 @@ contextBridge.exposeInMainWorld("posApi", {
   getStoreConfig: () => ipcRenderer.invoke("store:get-config"),
   saveStoreConfig: (payload) => ipcRenderer.invoke("store:save-config", payload),
   syncStoreConfig: () => ipcRenderer.invoke("store:sync-config"),
+  syncStoreWebConfig: () => ipcRenderer.invoke("store:sync-web-config"),
   onlineSyncTransactions: () => ipcRenderer.invoke("order:online-sync"),
   pickStoreImage: () => ipcRenderer.invoke("store:pick-image"),
   pickAppIcon: () => ipcRenderer.invoke("store:pick-icon"),

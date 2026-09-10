@@ -155,6 +155,7 @@ export default function StoreSettings({ onApplied, licenseState, onLicenseStateC
   const [readonlyMessageInput, setReadonlyMessageInput] = useState("");
   const [licenseSaving, setLicenseSaving] = useState(false);
   const [licenseRefreshing, setLicenseRefreshing] = useState(false);
+  const [webSyncLoading, setWebSyncLoading] = useState(false);
 
   const qrisDebounceRef = useRef(null);
 
@@ -162,6 +163,24 @@ export default function StoreSettings({ onApplied, licenseState, onLicenseStateC
     setStatus(msg);
     setStatusType(type);
     setTimeout(() => setStatus(""), 4000);
+  }
+
+  async function syncFromWeb() {
+    setWebSyncLoading(true);
+    try {
+      const res = await window.posApi.syncStoreWebConfig();
+      if (res && res.success) {
+        showStatus("✓ " + res.message, "ok");
+        await loadConfig();
+        onApplied?.();
+      } else {
+        showStatus("Gagal: " + (res?.message || "Unknown error"), "err");
+      }
+    } catch (err) {
+      showStatus(`Gagal sinkron dari Web POS: ${err.message}`, "err");
+    } finally {
+      setWebSyncLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -594,8 +613,18 @@ export default function StoreSettings({ onApplied, licenseState, onLicenseStateC
           </div>
 
           <div className="store-actions-row">
-            <button className="btn btn-save" onClick={saveStoreInfo} disabled={loading}>
+            <button className="btn btn-save" onClick={saveStoreInfo} disabled={loading || webSyncLoading}>
               Simpan Info Toko
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={syncFromWeb}
+              disabled={loading || webSyncLoading}
+              style={{ borderColor: "#0d9488", color: "#0d9488", fontWeight: 700 }}
+              title="Ambil Profil Toko, Alamat, No WA, Subtitle, dan Lebar Kertas dari Web POS"
+            >
+              {webSyncLoading ? "Menyinkronkan..." : "🔄 Sinkronkan Pengaturan dari Web POS"}
             </button>
           </div>
         </div>
@@ -634,8 +663,18 @@ export default function StoreSettings({ onApplied, licenseState, onLicenseStateC
           )}
 
           <div className="store-actions-row" style={{ marginTop: "16px" }}>
-            <button className="btn btn-save" onClick={saveStoreInfo} disabled={loading}>
+            <button className="btn btn-save" onClick={saveStoreInfo} disabled={loading || webSyncLoading}>
               Simpan Logo Path
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={syncFromWeb}
+              disabled={loading || webSyncLoading}
+              style={{ borderColor: "#0d9488", color: "#0d9488", fontWeight: 700 }}
+              title="Unduh dan pasang Icon Toko 1:1 dari Web POS sebagai logo struk"
+            >
+              {webSyncLoading ? "Mengunduh..." : "🔄 Sinkronkan Icon 1:1 dari Web POS"}
             </button>
             {cfg.storeLogoPath && (
               <button
@@ -644,7 +683,7 @@ export default function StoreSettings({ onApplied, licenseState, onLicenseStateC
                   handleChange("storeLogoPath", "");
                   handleChange("hasLogo", false);
                 }}
-                disabled={loading}
+                disabled={loading || webSyncLoading}
               >
                 Hapus Logo
               </button>
