@@ -17,11 +17,6 @@ function formatDate(value) {
   }).format(new Date(value));
 }
 
-function getDefaultAllHistoryFrom() {
-  const date = new Date();
-  date.setDate(date.getDate() - 365);
-  return date.toISOString().split("T")[0];
-}
 
 const CART_PAGE_SIZE = 10;
 const ORDER_PAGE_SIZE = 8;
@@ -88,15 +83,6 @@ export default function CustomOrder({
   const [orderPage, setOrderPage] = useState(0);
   const [expandedOrderId, setExpandedOrderId] = useState(null);
 
-  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
-  const [allHistoryFrom, setAllHistoryFrom] = useState(() => getDefaultAllHistoryFrom());
-  const [allHistoryTo, setAllHistoryTo] = useState(todayStr);
-  const [allHistoryOrders, setAllHistoryOrders] = useState([]);
-  const [allHistoryLoading, setAllHistoryLoading] = useState(false);
-  const [allHistorySearch, setAllHistorySearch] = useState("");
-  const [allHistoryPage, setAllHistoryPage] = useState(0);
-  const [allHistoryExpandedId, setAllHistoryExpandedId] = useState(null);
-  const [allHistoryLoaded, setAllHistoryLoaded] = useState(false);
 
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1109,25 +1095,8 @@ export default function CustomOrder({
         setOrderPage={setOrderPage}
         expandedOrderId={expandedOrderId}
         setExpandedOrderId={setExpandedOrderId}
-        allHistoryFrom={allHistoryFrom}
-        setAllHistoryFrom={setAllHistoryFrom}
-        allHistoryTo={allHistoryTo}
-        setAllHistoryTo={setAllHistoryTo}
-        allHistoryOrders={allHistoryOrders}
-        setAllHistoryOrders={setAllHistoryOrders}
-        allHistoryLoading={allHistoryLoading}
-        setAllHistoryLoading={setAllHistoryLoading}
-        allHistorySearch={allHistorySearch}
-        setAllHistorySearch={setAllHistorySearch}
-        allHistoryPage={allHistoryPage}
-        setAllHistoryPage={setAllHistoryPage}
-        allHistoryExpandedId={allHistoryExpandedId}
-        setAllHistoryExpandedId={setAllHistoryExpandedId}
-        allHistoryLoaded={allHistoryLoaded}
-        setAllHistoryLoaded={setAllHistoryLoaded}
         canRetur={canRetur}
         setReturTarget={setReturTarget}
-        todayStr={todayStr}
         onResetAllOrders={handleResetAllOrders}
       />
 
@@ -1267,6 +1236,20 @@ const ALL_HISTORY_PAGE_SIZE = 10;
 function OrderTable({ orders, emptyMsg, expandedId, setExpandedId, canRetur, setReturTarget }) {
   const totalPages = Math.max(1, Math.ceil(orders.length / ALL_HISTORY_PAGE_SIZE));
   const [page, setPage] = useState(0);
+  const [reprintingId, setReprintingId] = useState(null);
+
+  const handleReprint = async (e, ord) => {
+    e.stopPropagation();
+    try {
+      setReprintingId(ord.id);
+      const res = await window.posApi.reprintOrder(ord);
+      alert(res?.message || "Struk transaksi berhasil dicetak ulang.");
+    } catch (err) {
+      alert("Gagal cetak ulang struk: " + (err.message || err));
+    } finally {
+      setReprintingId(null);
+    }
+  };
 
   useEffect(() => {
     setPage(0);
@@ -1358,8 +1341,20 @@ function OrderTable({ orders, emptyMsg, expandedId, setExpandedId, canRetur, set
                         )}
                       </div>
                     </td>
-                    <td>
-                      <button className="btn-expand">{expandedId === ord.id ? "▲" : "▼"}</button>
+                    <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        title="Cetak ulang struk transaksi ini"
+                        onClick={(e) => handleReprint(e, ord)}
+                        disabled={reprintingId === ord.id}
+                        style={{ padding: "4px 8px", fontSize: "0.75rem", marginRight: 6 }}
+                      >
+                        {reprintingId === ord.id ? "🖨️..." : "🖨️ Cetak"}
+                      </button>
+                      <button className="btn-expand" onClick={() => setExpandedId(expandedId === ord.id ? null : ord.id)}>
+                        {expandedId === ord.id ? "▲" : "▼"}
+                      </button>
                     </td>
                   </tr>
                   {expandedId === ord.id && (
@@ -1445,116 +1440,25 @@ function OrderHistoryPanel({
   orders, summary, historyTab, setHistoryTab,
   orderSearch, setOrderSearch, orderPage, setOrderPage,
   expandedOrderId, setExpandedOrderId,
-  allHistoryFrom, setAllHistoryFrom, allHistoryTo, setAllHistoryTo,
-  allHistoryOrders, setAllHistoryOrders, allHistoryLoading, setAllHistoryLoading,
-  allHistorySearch, setAllHistorySearch, allHistoryPage, setAllHistoryPage,
-  allHistoryExpandedId, setAllHistoryExpandedId,
-  allHistoryLoaded, setAllHistoryLoaded,
-  canRetur, setReturTarget, todayStr,
+  canRetur, setReturTarget,
   onResetAllOrders,
 }) {
-  const [serverPage, setServerPage] = useState(1);
-  const [serverTotalPages, setServerTotalPages] = useState(1);
-  const [serverTotalCount, setServerTotalCount] = useState(0);
-
   const filteredToday = useMemo(() => {
     if (!orderSearch.trim()) return orders;
     const q = orderSearch.toLowerCase();
     return orders.filter(
       (o) =>
-        o.id.toLowerCase().includes(q) ||
-        o.paymentMethod.toLowerCase().includes(q) ||
-        o.items.some((i) => i.title.toLowerCase().includes(q) || (i.sku || "").toLowerCase().includes(q))
+        (o.id && o.id.toLowerCase().includes(q)) ||
+        (o.invoiceNumber && o.invoiceNumber.toLowerCase().includes(q)) ||
+        (o.nofaktur && o.nofaktur.toLowerCase().includes(q)) ||
+        (o.paymentMethod && o.paymentMethod.toLowerCase().includes(q)) ||
+        (o.cashierName && o.cashierName.toLowerCase().includes(q)) ||
+        (o.customerName && o.customerName.toLowerCase().includes(q)) ||
+        (o.items && o.items.some((i) => (i.title || i.nama_produk || "").toLowerCase().includes(q) || (i.sku || "").toLowerCase().includes(q)))
     );
   }, [orders, orderSearch]);
 
-  const filteredAll = useMemo(() => {
-    if (!allHistorySearch.trim()) return allHistoryOrders;
-    const q = allHistorySearch.toLowerCase();
-    return allHistoryOrders.filter(
-      (o) =>
-        (o.id && o.id.toLowerCase().includes(q)) ||
-        (o.faktur && o.faktur.toLowerCase().includes(q)) ||
-        (o.paymentMethod && o.paymentMethod.toLowerCase().includes(q)) ||
-        (o.items && o.items.some((i) => i.title.toLowerCase().includes(q) || (i.sku || "").toLowerCase().includes(q)))
-    );
-  }, [allHistoryOrders, allHistorySearch]);
-
-  async function loadAllHistory(targetPage = 1, searchQuery = allHistorySearch) {
-    try {
-      setAllHistoryLoading(true);
-      // Attempt server paginated fetch from Web POS API
-      const res = await window.posApi.fetchServerOrders({
-        page: targetPage,
-        limit: 15,
-        search: searchQuery?.trim() || undefined,
-        date: allHistoryFrom === allHistoryTo ? allHistoryFrom : undefined
-      });
-
-      if (res && res.status === "success" && Array.isArray(res.orders)) {
-        setAllHistoryOrders(res.orders);
-        if (res.pagination) {
-          setServerPage(res.pagination.page || targetPage);
-          setServerTotalPages(res.pagination.totalPages || 1);
-          setServerTotalCount(res.pagination.total || res.orders.length);
-        }
-        setAllHistoryLoaded(true);
-        setAllHistoryExpandedId(null);
-        return;
-      }
-
-      // Fallback to local date range
-      const result = await window.posApi.getOrdersByDateRange({ from: allHistoryFrom, to: allHistoryTo });
-      setAllHistoryOrders(Array.isArray(result) ? result : []);
-      setAllHistoryPage(0);
-      setAllHistoryExpandedId(null);
-      setAllHistoryLoaded(true);
-    } catch (err) {
-      try {
-        const result = await window.posApi.getOrdersByDateRange({ from: allHistoryFrom, to: allHistoryTo });
-        setAllHistoryOrders(Array.isArray(result) ? result : []);
-      } catch {
-        setAllHistoryOrders([]);
-      }
-      setAllHistoryLoaded(true);
-    } finally {
-      setAllHistoryLoading(false);
-    }
-  }
-
-  async function handleOnlineSync() {
-    try {
-      setAllHistoryLoading(true);
-      const result = await window.posApi.onlineSyncTransactions();
-      if (result?.success) {
-        await loadAllHistory(1);
-      }
-      if (result?.message) {
-        alert(result.message);
-      }
-    } catch (err) {
-      alert(err.message || "Gagal melakukan sinkronisasi online.");
-    } finally {
-      setAllHistoryLoading(false);
-    }
-  }
-
-  // Auto-load when switching to "all" tab for the first time
-  useEffect(() => {
-    if (historyTab === "all" && !allHistoryLoaded) {
-      loadAllHistory(1);
-    }
-  }, [historyTab]);
-
-  const allSummary = useMemo(() => {
-    const paid = allHistoryOrders.filter((o) => o.status === "paid" || o.status === "partial-return");
-    return {
-      total: paid.reduce((s, o) => s + (Number(o.subtotal || o.grandTotal) || 0), 0),
-      count: paid.length,
-      cash: paid.filter((o) => o.paymentMethod === "cash").reduce((s, o) => s + (Number(o.subtotal || o.grandTotal) || 0), 0),
-      qris: paid.filter((o) => o.paymentMethod === "qris").reduce((s, o) => s + (Number(o.subtotal || o.grandTotal) || 0), 0),
-    };
-  }, [allHistoryOrders]);
+  const activeTab = (historyTab === "today" || historyTab === "summary") ? historyTab : "today";
 
   return (
     <section className="panel order-history-panel">
@@ -1563,22 +1467,16 @@ function OrderHistoryPanel({
           <h2 style={{ margin: 0 }}>Order History</h2>
           <div className="oh-tabs">
             <button
-              className={`oh-tab-btn${historyTab === "summary" ? " oh-tab-active" : ""}`}
+              className={`oh-tab-btn${activeTab === "summary" ? " oh-tab-active" : ""}`}
               onClick={() => setHistoryTab("summary")}
             >
               Summary Hari Ini
             </button>
             <button
-              className={`oh-tab-btn${historyTab === "today" ? " oh-tab-active" : ""}`}
+              className={`oh-tab-btn${activeTab === "today" ? " oh-tab-active" : ""}`}
               onClick={() => setHistoryTab("today")}
             >
               Riwayat Hari Ini <span className="oh-badge">{orders.length}</span>
-            </button>
-            <button
-              className={`oh-tab-btn${historyTab === "all" ? " oh-tab-active" : ""}`}
-              onClick={() => setHistoryTab("all")}
-            >
-              Semua Riwayat (Web POS)
             </button>
           </div>
         </div>
@@ -1603,7 +1501,7 @@ function OrderHistoryPanel({
         )}
       </div>
 
-      {historyTab === "summary" && (
+      {activeTab === "summary" && (
         <div className="oh-body">
           <div className="summary-grid summary-grid-5">
             <article>
@@ -1630,136 +1528,23 @@ function OrderHistoryPanel({
         </div>
       )}
 
-      {historyTab === "today" && (
+      {activeTab === "today" && (
         <div className="oh-body">
           <input
             className="search-input search-full"
             type="text"
-            placeholder="Cari order (ID, barang, metode)..."
+            placeholder="Cari order hari ini (No Faktur, kasir, pelanggan, barang)..."
             value={orderSearch}
             onChange={(e) => { setOrderSearch(e.target.value); setOrderPage(0); }}
           />
           <OrderTable
             orders={filteredToday}
-            emptyMsg={orders.length === 0 ? "Belum ada order hari ini." : "Tidak ditemukan."}
+            emptyMsg={orders.length === 0 ? "Belum ada order hari ini." : "Tidak ditemukan order sesuai pencarian."}
             expandedId={expandedOrderId}
             setExpandedId={setExpandedOrderId}
             canRetur={canRetur}
             setReturTarget={setReturTarget}
           />
-        </div>
-      )}
-
-      {historyTab === "all" && (
-        <div className="oh-body">
-          <div className="oh-date-filter">
-            <label>Dari</label>
-            <input
-              type="date"
-              className="oh-date-input"
-              value={allHistoryFrom}
-              max={todayStr}
-              onChange={(e) => setAllHistoryFrom(e.target.value)}
-            />
-            <label>Sampai</label>
-            <input
-              type="date"
-              className="oh-date-input"
-              value={allHistoryTo}
-              max={todayStr}
-              onChange={(e) => setAllHistoryTo(e.target.value)}
-            />
-            <button
-              className="btn btn-secondary oh-search-btn"
-              onClick={() => loadAllHistory(1)}
-              disabled={allHistoryLoading}
-            >
-              {allHistoryLoading ? "Memuat..." : "Tampilkan"}
-            </button>
-            <button
-              className="btn btn-save oh-search-btn"
-              onClick={handleOnlineSync}
-              disabled={allHistoryLoading}
-            >
-              {allHistoryLoading ? "Sinkron..." : "Online Sync"}
-            </button>
-          </div>
-
-          {allHistoryLoaded && (
-            <div className="oh-all-summary">
-              <span>{serverTotalCount || allSummary.count} order</span>
-              <span>Total: <strong>{formatRupiah(allSummary.total)}</strong></span>
-              <span>Cash: {formatRupiah(allSummary.cash)}</span>
-              <span>QRIS: {formatRupiah(allSummary.qris)}</span>
-            </div>
-          )}
-
-          <div style={{ display: "flex", gap: 8, marginTop: 10, marginBottom: 10 }}>
-            <input
-              className="search-input search-full"
-              type="text"
-              placeholder="Cari faktur / order / nama barang di server Web POS..."
-              value={allHistorySearch}
-              onChange={(e) => {
-                setAllHistorySearch(e.target.value);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  loadAllHistory(1, e.target.value);
-                }
-              }}
-              style={{ flex: 1 }}
-            />
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => loadAllHistory(1, allHistorySearch)}
-              disabled={allHistoryLoading}
-              style={{ padding: "8px 14px" }}
-            >
-              Cari
-            </button>
-          </div>
-
-          {allHistoryLoaded ? (
-            <>
-              <OrderTable
-                orders={filteredAll}
-                emptyMsg={allHistoryOrders.length === 0 ? "Tidak ada order pada periode / filter ini." : "Tidak ditemukan."}
-                expandedId={allHistoryExpandedId}
-                setExpandedId={setAllHistoryExpandedId}
-                canRetur={false}
-                setReturTarget={null}
-              />
-              {serverTotalPages > 1 && (
-                <div className="paging" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, marginTop: 14 }}>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    disabled={serverPage <= 1 || allHistoryLoading}
-                    onClick={() => loadAllHistory(serverPage - 1)}
-                  >
-                    ← Sebelumnya
-                  </button>
-                  <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>
-                    Halaman {serverPage} dari {serverTotalPages} ({serverTotalCount} Transaksi)
-                  </span>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    disabled={serverPage >= serverTotalPages || allHistoryLoading}
-                    onClick={() => loadAllHistory(serverPage + 1)}
-                  >
-                    Selanjutnya →
-                  </button>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="empty-cell" style={{ padding: "24px 0", textAlign: "center" }}>
-              {allHistoryLoading ? "Memuat data dari server Web POS..." : "Pilih rentang tanggal lalu klik Tampilkan."}
-            </div>
-          )}
         </div>
       )}
     </section>

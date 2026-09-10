@@ -517,6 +517,34 @@ ipcMain.handle("order:get-by-date-range", async (_, payload) => {
   return getOrdersByDateRange(app, { from, to });
 });
 
+ipcMain.handle("order:reprint", async (_, orderData) => {
+  ensurePermission("print_receipt");
+  if (!orderData) throw new Error("Data transaksi tidak ditemukan.");
+
+  const orderForPrint = {
+    nofaktur: orderData.invoiceNumber || orderData.nofaktur || orderData.id,
+    createdAt: orderData.createdAt || orderData.date || new Date().toISOString(),
+    cashierName: orderData.cashierName || orderData.nama_user || "Kasir",
+    customerName: orderData.customerName || orderData.nama_pelanggan || "Pelanggan Umum",
+    paymentMethod: (orderData.paymentMethod === "tunai" || orderData.paymentMethod === "cash") 
+      ? "cash" 
+      : ((orderData.paymentMethod === "card" || orderData.paymentMethod === "qris") ? "qris" : orderData.paymentMethod),
+    items: (orderData.items || []).map((i) => ({
+      title: i.title || i.nama_produk || "Item",
+      qty: Number(i.qty || i.jumlah_stok || 1),
+      price: Number(i.price || i.harga_jual || 0),
+      lineTotal: Number(i.lineTotal || i.subtotal || i.subtotal_harga || (Number(i.price || 0) * Number(i.qty || 1)))
+    })),
+    diskon: Number(orderData.diskon || 0),
+    totalBayar: Number(orderData.total || orderData.totalBayar || orderData.subtotal || 0),
+    cashGiven: orderData.cashGiven !== undefined && orderData.cashGiven !== null ? Number(orderData.cashGiven) : null,
+    change: Number(orderData.change || 0)
+  };
+
+  await printOrderReceipt(orderForPrint);
+  return { success: true, message: `Struk transaksi #${orderForPrint.nofaktur} berhasil dicetak ulang.` };
+});
+
 ipcMain.handle("order:online-sync", async () => {
   await ensureLicenseAllowsWrite();
   ensurePermission("view_order");

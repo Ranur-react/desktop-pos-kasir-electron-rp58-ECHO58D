@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("posApi", {
   returOrderItem: (payload) => ipcRenderer.invoke("order:retur", payload),
   getOrderById: (orderId) => ipcRenderer.invoke("order:get-by-id", orderId),
   getOrdersByDateRange: (payload) => ipcRenderer.invoke("order:get-by-date-range", payload),
+  reprintOrder: (order) => ipcRenderer.invoke("order:reprint", order),
 
   // QRIS Statis
   getQrisImage: () => ipcRenderer.invoke("qris:image"),

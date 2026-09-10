@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import CustomOrder from "./CustomOrder";
+import BranchOrdersHistory from "./BranchOrdersHistory";
 import PrinterSettings from "./PrinterSettings";
 import DatabaseSettings from "./DatabaseSettings";
 import ServerSettings from "./ServerSettings";
@@ -274,7 +275,7 @@ export default function App() {
     }
   }, [availableTabs, tab]);
 
-  const isOrderFocusTab = tab === "order" || tab === "orders";
+  const isOrderFocusTab = tab === "order";
 
   useEffect(() => {
     if (!isOrderFocusTab) {
@@ -425,10 +426,32 @@ export default function App() {
 
     const interval = setInterval(() => {
       refreshServerBootstrap();
+      if (permissions?.view_order) {
+        loadOrders().catch(() => {});
+      }
     }, 25000);
 
     return () => clearInterval(interval);
-  }, [authState.user]);
+  }, [authState.user, permissions]);
+
+  // Realtime update when tab changes or window gains focus
+  useEffect(() => {
+    if (!authState.user) return;
+    if (permissions?.view_order) {
+      loadOrders().catch(() => {});
+    }
+  }, [tab, authState.user, permissions]);
+
+  useEffect(() => {
+    if (!authState.user) return;
+    function handleWindowFocus() {
+      if (permissions?.view_order) {
+        loadOrders().catch(() => {});
+      }
+    }
+    window.addEventListener("focus", handleWindowFocus);
+    return () => window.removeEventListener("focus", handleWindowFocus);
+  }, [authState.user, permissions]);
 
   useEffect(() => {
     function onGlobalKeydown(e) {
@@ -1038,7 +1061,7 @@ export default function App() {
         )}
 
         <div className="workspace-body">
-          {isOrderFocusTab && (
+          {tab === "order" && (
             <CustomOrder
               orders={orders}
               summary={orderSummary}
@@ -1046,7 +1069,12 @@ export default function App() {
               canCreateOrder={can("create_order") && !readOnlyByLicense}
               canRetur={can("retur_order") && !readOnlyByLicense}
               compactMode={true}
-              initialHistoryTab={tab === "orders" ? "today" : undefined}
+            />
+          )}
+
+          {tab === "orders" && can("view_order") && (
+            <BranchOrdersHistory
+              onRefreshParent={loadOrders}
             />
           )}
 

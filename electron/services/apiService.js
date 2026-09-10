@@ -242,6 +242,10 @@ async function fetchServerOrders(app, params = {}) {
   if (params.limit) searchParams.set("limit", params.limit);
   if (params.search) searchParams.set("search", params.search);
   if (params.date) searchParams.set("date", params.date);
+  if (params.from) searchParams.set("from", params.from);
+  if (params.to) searchParams.set("to", params.to);
+  if (params.channel) searchParams.set("channel", params.channel);
+  if (params.paymentMethod) searchParams.set("paymentMethod", params.paymentMethod);
 
   const qs = searchParams.toString();
   const url = `${config.serverUrl}/api/desktop/orders${qs ? `?${qs}` : ""}`;

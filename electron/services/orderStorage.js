@@ -146,6 +146,57 @@ async function writeOrderToDB(order) {
 
 // Public functions
 async function getTodayOrders(app) {
+  const today = getDateKey();
+  const serverConfig = apiService.getServerConfig(app);
+
+  // If server is configured and connected, fetch latest today transactions from Web Server API
+  if (serverConfig?.serverUrl && serverConfig?.isConnected) {
+    try {
+      const serverRes = await apiService.fetchServerOrders(app, { date: today, limit: 100 });
+      if (serverRes && serverRes.status === "success" && Array.isArray(serverRes.orders)) {
+        const mappedServerOrders = serverRes.orders.map((so) => ({
+          id: so.invoiceNumber || String(so.id),
+          nofaktur: so.invoiceNumber,
+          channel: so.channel || "web",
+          customerName: so.customerName || "Pelanggan Umum",
+          cashierName: so.cashierName || "Kasir",
+          branchName: so.branchName || "",
+          paymentMethod: so.paymentMethod === "tunai" ? "cash" : (so.paymentMethod === "card" ? "qris" : so.paymentMethod),
+          subtotal: Number(so.subtotal) || 0,
+          diskon: Number(so.diskon) || 0,
+          totalBayar: Number(so.total) || 0,
+          cashGiven: so.cashGiven !== undefined && so.cashGiven !== null ? Number(so.cashGiven) : null,
+          change: Number(so.change) || 0,
+          status: "paid",
+          createdAt: so.createdAt || `${so.date}T00:00:00.000Z`,
+          synced: true,
+          returHistory: [],
+          items: (so.items || []).map((it, idx) => ({
+            lineId: `srv-${so.id}-${idx}`,
+            title: it.title || it.nama_produk || "Item",
+            price: Number(it.price || it.harga_jual || 0),
+            qty: Number(it.qty || it.jumlah_stok || 1),
+            lineTotal: Number(it.subtotal || it.subtotal_harga || (Number(it.price || 0) * Number(it.qty || 1)))
+          }))
+        }));
+
+        const localOrders = readOrders(app);
+        const unsyncedLocals = localOrders.filter(
+          (lo) => lo.synced === false && !mappedServerOrders.some((mo) => mo.id === lo.id || mo.nofaktur === lo.nofaktur)
+        );
+
+        const combined = [...unsyncedLocals, ...mappedServerOrders].sort(
+          (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+        );
+
+        writeOrders(app, combined);
+        return combined;
+      }
+    } catch (err) {
+      console.warn("[OrderStorage] Gagal memuat pesanan hari ini dari Web POS, gunakan cache lokal:", err.message);
+    }
+  }
+
   if (db.isConnected()) {
     const fromDb = await readOrdersFromDB();
     if (Array.isArray(fromDb) && fromDb.length > 0) {
@@ -474,27 +525,22 @@ async function getOrderByIdDB(orderId) {
 }
 
 async function getTodayOrdersSummary(app) {
-  if (db.isConnected()) {
-    const fromDb = await getTodayOrdersSummaryDB();
-    if (Number(fromDb.totalSales || 0) > 0 || Number(fromDb.totalOrders || 0) > 0) {
-      return fromDb;
-    }
-  }
-
-  const orders = readOrders(app);
+  const orders = await getTodayOrders(app);
   const paidOrders = orders.filter((o) => o.status === "paid" || o.status === "partial-return");
+  const returnedOrders = orders.filter((o) => o.status === "returned");
 
-  const totalSales = paidOrders.reduce((s, o) => s + o.subtotal, 0);
+  const totalSales = paidOrders.reduce((s, o) => s + (Number(o.totalBayar !== undefined ? o.totalBayar : o.subtotal) || 0), 0);
   const totalOrders = paidOrders.length;
   const totalCash = paidOrders
-    .filter((o) => o.paymentMethod === "cash")
-    .reduce((s, o) => s + o.subtotal, 0);
+    .filter((o) => o.paymentMethod === "cash" || o.paymentMethod === "tunai")
+    .reduce((s, o) => s + (Number(o.totalBayar !== undefined ? o.totalBayar : o.subtotal) || 0), 0);
   const totalQris = paidOrders
-    .filter((o) => o.paymentMethod === "qris")
-    .reduce((s, o) => s + o.subtotal, 0);
-  const totalReturned = orders.reduce((s, o) => {
-    return s + o.returHistory.reduce((rs, r) => rs + r.lineTotal, 0);
-  }, 0);
+    .filter((o) => o.paymentMethod === "qris" || o.paymentMethod === "card")
+    .reduce((s, o) => s + (Number(o.totalBayar !== undefined ? o.totalBayar : o.subtotal) || 0), 0);
+  const totalReturned = returnedOrders.reduce((s, o) => s + (Number(o.totalBayar !== undefined ? o.totalBayar : o.subtotal) || 0), 0) +
+    orders.reduce((s, o) => {
+      return s + (o.returHistory || []).reduce((rs, r) => rs + (Number(r.lineTotal) || 0), 0);
+    }, 0);
 
   return { totalSales, totalOrders, totalCash, totalQris, totalReturned };
 }
