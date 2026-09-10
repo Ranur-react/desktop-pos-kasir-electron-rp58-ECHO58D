@@ -102,6 +102,7 @@ function setEnvKey(key, value) {
   }
 
   let found = false;
+  let changed = false;
   const nextLines = lines.map((line) => {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) {
@@ -110,8 +111,12 @@ function setEnvKey(key, value) {
 
     const eqIdx = trimmed.indexOf("=");
     const existingKey = trimmed.slice(0, eqIdx).trim();
+    const existingVal = trimmed.slice(eqIdx + 1).trim();
     if (existingKey === key) {
       found = true;
+      if (existingVal !== lineValue) {
+        changed = true;
+      }
       return `${key}=${lineValue}`;
     }
     return line;
@@ -119,9 +124,12 @@ function setEnvKey(key, value) {
 
   if (!found) {
     nextLines.push(`${key}=${lineValue}`);
+    changed = true;
   }
 
-  fs.writeFileSync(envPath, nextLines.join("\n"), "utf-8");
+  if (changed || !fs.existsSync(envPath)) {
+    fs.writeFileSync(envPath, nextLines.join("\n"), "utf-8");
+  }
   process.env[key] = lineValue;
 }
 
